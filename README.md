@@ -1,4 +1,4 @@
-<p align="center"><img align="center" width="280" src="branding/icon_1024.png"/><img align="center" width="280" src="branding/name.png"/></p>
+<p align="center"><img width="25%" src="branding/icon_1024.png"/><img src="branding/name.png"/></p>
 <h3 align="center">Enables profile inheritance in VisualStudio Code!</h3>
 <h4 align="center"><a href="https://marketplace.visualstudio.com/items?itemName=alexthomson.inherit-profile" target="_blank">View in Marketplace</a></h3>
 <hr>
