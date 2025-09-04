@@ -7,30 +7,28 @@
 Make sure you have this extension installed on the profile you would like to
 inherit settings onto.
 
-📝 __Important__: After updating the inheritance configuration for your profile,
+__Important__: After updating the inheritance configuration for your profile,
 you need to run the `Apply Profile Inheritance (Current Profile)` command. This
 will fetch the inherited settings from your chosen profiles. By default this
 will automatically execute every time you change profile and every time the
 extension starts.
 
-### Inheriting from the Default Profile
-`settings.json`
+### 📝 Examples
+#### Inheriting from the Default Profile
 ```json
 {
     "inheritProfile.parents": ["Default"]
 }
 ```
 
-### Inheriting from Multiple Profiles
-`settings.json`
+#### Inheriting from Multiple Profiles
 ```json
 {
     "inheritProfile.parents": ["Default", "My Other Profile"]
 }
 ```
 
-### Full Configuration
-`settings.json`
+#### Full Configuration
 ```json
 {
     "inheritProfile": {
