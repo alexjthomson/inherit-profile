@@ -353,6 +353,11 @@ async function applyInheritedSettings(userDirectory: string): Promise<void> {
 export async function updateCurrentProfileInheritance(): Promise<void> {
     const userDirectory = getUserDirectory();
     await applyInheritedSettings(userDirectory);
+
+    const config = vscode.workspace.getConfiguration("inheritProfile");
+    if (config.get<boolean>("showMessages", true)) {
+        vscode.window.showInformationMessage("Inherited profile settings applied!");
+    }
 }
 
 export async function removeCurrentProfileInheritedSettings(): Promise<void> {
@@ -361,6 +366,11 @@ export async function removeCurrentProfileInheritedSettings(): Promise<void> {
     const profiles = await getProfileMap(userDirectory);
     const currentProfilePath = path.join(profiles[currentProfileName], "settings.json");
     await removeInheritedSettingsFromFile(currentProfilePath);
+
+    const config = vscode.workspace.getConfiguration("inheritProfile");
+    if (config.get<boolean>("showMessages", true)) {
+        vscode.window.showInformationMessage("Inherited settings remove from current profile!");
+    }
 }
 
 /**
@@ -375,9 +385,9 @@ export async function updateInheritedSettingsOnProfileChange(context: vscode.Ext
     const onChange = async () => {
         const newProfileName = await getCurrentProfileName(userDirectory);
         if (newProfileName !== currentProfile) {
-        currentProfile = newProfileName;
-        console.info("Current profile has changed, updating inherited settings...");
-        await updateCurrentProfileInheritance();
+            currentProfile = newProfileName;
+            console.info("Current profile has changed, updating inherited settings...");
+            await updateCurrentProfileInheritance();
         }
     };
     watcher.onDidChange(onChange);

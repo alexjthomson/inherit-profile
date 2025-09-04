@@ -6,7 +6,6 @@ import { updateCurrentProfileInheritance, removeCurrentProfileInheritedSettings,
  */
 async function applyInheritedSettings() {
     await updateCurrentProfileInheritance();
-    vscode.window.showInformationMessage("Inherited profile settings applied!");
 }
 
 /**
@@ -14,7 +13,6 @@ async function applyInheritedSettings() {
  */
 async function removeInheritedSettings() {
     await removeCurrentProfileInheritedSettings();
-    vscode.window.showInformationMessage("Inherited settings remove from current profile!");
 }
 
 export async function activate(context: vscode.ExtensionContext) {

@@ -1,8 +1,15 @@
 {
   "name": "inherit-profile",
-  "displayName": "inherit-profile",
-  "description": "Profile inheritance",
   "version": "0.0.1",
+  "displayName": "Inherit Profile",
+  "description": "Profile inheritance for VS Code.",
+  "icon": "branding/icon_128.png",
+  "publisher": "alexthomson",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/alexjthomson/inherit-profile"
+  },
+  "license": "MIT",
   "engines": {
     "vscode": "^1.103.0"
   },
@@ -46,6 +53,11 @@
           "type": "boolean",
           "default": true,
           "description": "Updates the inherited settings when the current profile is changed."
+        },
+        "inheritProfile.showMessages": {
+          "type": "boolean",
+          "default": false,
+          "description": "Shows a message when ever settings are inherited into the current profile."
         }
       }
     }
