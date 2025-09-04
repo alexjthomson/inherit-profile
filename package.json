@@ -1,6 +1,6 @@
 {
   "name": "inherit-profile",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "displayName": "Inherit Profile",
   "description": "Profile inheritance for VS Code.",
   "icon": "branding/icon_128.png",
