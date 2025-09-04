@@ -1,13 +1,12 @@
-# ⚙️ Inherit Profile
-Enables profile inheritance in VisualStudio Code!
+<p align="center"><img align="center" width="280" src="branding/icon_1024.png"/><img align="center" width="280" src="branding/name.png"/></p>
+<h3 align="center">Enables profile inheritance in VisualStudio Code!</h3>
+<hr>
 
----
-
-## 📝 Configuration
+## ⚙️ Configuration
 Make sure you have this extension installed on the profile you would like to
 inherit settings onto.
 
-__Important__: After updating the inheritance configuration for your profile,
+📝 __Important__: After updating the inheritance configuration for your profile,
 you need to run the `Apply Profile Inheritance (Current Profile)` command. This
 will fetch the inherited settings from your chosen profiles. By default this
 will automatically execute every time you change profile and every time the
