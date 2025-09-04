@@ -1,9 +1,9 @@
-# inherit-profile
+# ⚙️ Inherit Profile (inherit-profile)
 Enables profile inheritance in VisualStudio Code!
 
 ---
 
-## Configuration
+## 📝 Configuration
 Make sure you have this extension installed on the profile you would like to
 inherit settings onto.
 
@@ -36,14 +36,15 @@ extension starts.
     "inheritProfile": {
         "parents": ["Default"],
         "runOnStartup": true,
-        "runOnProfileChange": true
+        "runOnProfileChange": true,
+        "showMessages": false
     }
 }
 ```
 
 ---
 
-## Project TODOs
+## 🎯 Future Plans
 - [ ] Tidy up [`profiles.ts`](src/profiles.ts).
 - [ ] Implement extension inheritance. This should be disabled by default, but
-  should be possible to enable through configuration entries.
+  should be possible to enable through configuration.
