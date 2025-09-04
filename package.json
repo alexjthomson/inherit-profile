@@ -9,15 +9,46 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "inherit-profile.applyInheritance",
-        "title": "Apply Profile Inheritance"
+        "command": "inherit-profile.applyInheritanceToCurrentProfile",
+        "title": "Apply Profile Inheritance (Current Profile)",
+        "icon": "combine"
+      },
+      {
+        "command": "inherit-profile.removeInheritedSettingsFromCurrentProfile",
+        "title": "Remove Inherited Settings (Current Profile)",
+        "icon": "clear-all"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Inherit Profile",
+      "properties": {
+        "inheritProfile.parents": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "List of profile names this profile should inherit settings from."
+        },
+        "inheritProfile.runOnStartup": {
+          "type": "boolean",
+          "default": true,
+          "description": "Updates the inherited settings when extension starts."
+        },
+        "inheritProfile.runOnProfileChange": {
+          "type": "boolean",
+          "default": true,
+          "description": "Updates the inherited settings when the current profile is changed."
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
@@ -38,5 +69,8 @@
     "eslint": "^9.32.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.2"
+  },
+  "dependencies": {
+    "jsonc-parser": "^3.3.1"
   }
 }
