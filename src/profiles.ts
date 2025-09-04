@@ -5,20 +5,6 @@ import * as fs from "fs/promises";
 import { parse } from "jsonc-parser";
 
 /**
- * @returns The user directory.
- */
-function getUserDirectory(): string {
-    // TODO: There is likely a better way of doing this
-    if (process.platform === "win32") {
-        return path.join(process.env.APPDATA || "", "Code", "User");
-    } else if (process.platform === "darwin") {
-        return path.join(os.homedir(), "Library", "Application Support", "Code", "User");
-    } else {
-        return path.join(os.homedir(), ".config", "Code", "User");
-    }
-}
-
-/**
  * Reads JSONC (JSON with comments).
  * @param filePath Path to the JSON/JSONC file.
  * @returns Parsed object or {} on error.
@@ -33,19 +19,31 @@ export async function readJSON(filePath: string): Promise<any> {
     }
 }
 
-function getGlobalStoragePath(userDirectory: string): string {
-    return path.join(userDirectory, "globalStorage/storage.json");
+/**
+ * @returns The user directory.
+ */
+function getUserDirectory(context: vscode.ExtensionContext): string {
+    return path.resolve(context.globalStorageUri.fsPath, "../../");
+}
+
+/**
+ * Gets the path to the global storage JSON file.
+ * @param context Extension context.
+ * @returns Returns the path to the global storage JSON file.
+ */
+function getGlobalStoragePath(context: vscode.ExtensionContext): string {
+    return path.resolve(context.globalStorageUri.fsPath, "../storage.json");
 }
 
 /**
  * Reads the global storage JSON file.
  * 
  * This contains a lot of useful information about profiles.
- * @param userDirectory Path to the user directory.
+ * @param context Extension context.
  * @returns Returns the contents of the global storage JSON file.
  */
-async function readGlobalStorage(userDirectory: string): Promise<any> {
-    const storagePath: string = getGlobalStoragePath(userDirectory);
+async function readGlobalStorage(context: vscode.ExtensionContext): Promise<any> {
+    const storagePath: string = getGlobalStoragePath(context);
     return await readJSON(storagePath);
 }
 
@@ -54,31 +52,57 @@ async function readGlobalStorage(userDirectory: string): Promise<any> {
  * 
  * This is useful for finding out the names and paths of the user created
  * profiles.
- * @param userDirectory Path to the user directory.
+ * @param context Extension context.
  * @returns Returns the contents of the `userDataProfiles` filed from the global
  * storage JSON file.
  */
-async function getCustomProfiles(userDirectory: string): Promise<any[]> {
-    const storage = await readGlobalStorage(userDirectory);
+async function getCustomProfiles(context: vscode.ExtensionContext): Promise<any[]> {
+    const storage = await readGlobalStorage(context);
     return storage.userDataProfiles ?? [];
 }
 
 /**
+ * Finds a record by it's `id`.
+ * @param obj Object to search.
+ * @param targetId Target ID to search for.
+ * @returns Returns the record with the given ID.
+ */
+function findById(obj: Record<string, any>, targetId: string): any | undefined {
+    if (typeof obj !== "object" || obj === null) {
+        return undefined;
+    }
+
+    // If this object has the matching id, return it
+    if (obj.id === targetId) {
+        return obj;
+    }
+
+    // Search inside each property
+    for (const value of Object.values(obj)) {
+        if (typeof value === "object" && value !== null) {
+            const found = findById(value, targetId);
+            if (found) {
+                return found;
+            }
+        }
+    }
+
+    return undefined;
+}
+
+/**
  * Gets the current profile name.
- * @param userDirectory Path to the user directory.
+ * @param context Extension context.
  * @returns Returns the name of the current profile.
  */
-async function getCurrentProfileName(userDirectory: string): Promise<string> {
-    const storage = await readGlobalStorage(userDirectory);
-    const preferencesItems = storage.lastKnownMenubarData.menus.Preferences.items;
-    for (const preferencesItem of preferencesItems) {
-        const id = preferencesItem.id;
-        if (id === "submenuitem.Profiles") {
-            const submenuItems = preferencesItem.submenu.items;
-            for (const submenuItem of submenuItems) {
-                if (submenuItem.checked) {
-                    return submenuItem.label;
-                }
+async function getCurrentProfileName(context: vscode.ExtensionContext): Promise<string> {
+    const storage = await readGlobalStorage(context);
+    const profilesSubMenu = findById(storage, "submenuitem.Profiles");
+    if (profilesSubMenu) {
+        const submenuItems = profilesSubMenu.submenu.items;
+        for (const submenuItem of submenuItems) {
+            if (submenuItem.checked) {
+                return submenuItem.label;
             }
         }
     }
@@ -88,18 +112,19 @@ async function getCurrentProfileName(userDirectory: string): Promise<string> {
 /**
  * Finds each of the profiles in the user directory and returns a mapping from
  * the profile name to the profile directory.
- * @param userDirectory Path to the user directory.
+ * @param context Extension context.
  * @returns A mapping from profile name to the directory for the profile.
  */
-async function getProfileMap(userDirectory: string): Promise<Record<string, string>> {
+async function getProfileMap(context: vscode.ExtensionContext): Promise<Record<string, string>> {
     const map: Record<string, string> = {};
+    const userDirectory = getUserDirectory(context);
 
     // Add the default profile:
     // NOTE: The default profile always exists in the user directory.
     map["Default"] = userDirectory;
 
     // Add the custom profiles:
-    let customProfiles: any[] = await getCustomProfiles(userDirectory);
+    let customProfiles: any[] = await getCustomProfiles(context);
     for (const profile of customProfiles) {
         if (profile.name && profile.location) {
             map[profile.name] = path.join(userDirectory, "profiles", profile.location);
@@ -157,11 +182,12 @@ function mergeFlattenedSettings(
  * This function will start with the first profile in the list. This function
  * will override properties that are redefined in profiles that appear towards
  * the end of the list.
+ * @param context Extension context.
  * @param profiles List of profiles to collect settings for.
  * @returns Flattened settings from the provided profiles.
  */
-async function getProfileSettings(userDirectory: string, profiles: string[]): Promise<Record<string, string>> {
-    const profileMap: Record<string, string> = await getProfileMap(userDirectory);
+async function getProfileSettings(context: vscode.ExtensionContext, profiles: string[]): Promise<Record<string, string>> {
+    const profileMap: Record<string, string> = await getProfileMap(context);
     var settings: Record<string, string> = {};
     console.debug(`Collecting settings from ${profiles.length} different profiles.`);
     for (const profileName of profiles) {
@@ -183,12 +209,12 @@ async function getProfileSettings(userDirectory: string, profiles: string[]): Pr
 
 /**
  * Gets the settings for the current profile.
- * @param userDirectory Path to the user directory.
+ * @param context Extension context.
  * @returns Returns the flattened settings for the current profile.
  */
-async function getCurrentProfileSettings(userDirectory: string): Promise<Record<string, string>> {
-    const currentProfileName = await getCurrentProfileName(userDirectory);
-    return flattenSettings(await getProfileSettings(userDirectory, [currentProfileName]));
+async function getCurrentProfileSettings(context: vscode.ExtensionContext): Promise<Record<string, string>> {
+    const currentProfileName = await getCurrentProfileName(context);
+    return flattenSettings(await getProfileSettings(context, [currentProfileName]));
 }
 
 /**
@@ -212,16 +238,16 @@ function subtractSettings(
 
 /**
  * Gets the settings that are missing from the current profile.
- * @param userDirectory Path to the user directory.
+ * @param context Extension context.
  * @returns Returns the flattened settings that are missing from the current profile.
  */
-async function getInheritedSettings(userDirectory: string): Promise<Record<string, string>> {
-    const currentProfileSettings = await getCurrentProfileSettings(userDirectory);
+async function getInheritedSettings(context: vscode.ExtensionContext): Promise<Record<string, string>> {
+    const currentProfileSettings = await getCurrentProfileSettings(context);
     console.info(`Found ${Object.keys(currentProfileSettings).length} settings in current profile.`);
 
     const config = vscode.workspace.getConfiguration("inheritProfile");
     const parentProfiles = config.get<string[]>("parents", []);
-    const parentProfileSettings = await getProfileSettings(userDirectory, parentProfiles);
+    const parentProfileSettings = await getProfileSettings(context, parentProfiles);
     console.info(`Found ${Object.keys(parentProfileSettings).length} settings in parent profiles.`);
 
     const inheritedSettings = subtractSettings(parentProfileSettings, currentProfileSettings);
@@ -323,19 +349,19 @@ async function writeInheritedSettings(
 
 /**
  * Applies the inherited settings to the current profile.
- * @param userDirectory Path to the user directory.
+ * @param context Extension context.
  */
-async function applyInheritedSettings(userDirectory: string): Promise<void> {
+async function applyInheritedSettings(context: vscode.ExtensionContext): Promise<void> {
     // Get the path to the current profile settings:
-    const currentProfileName = await getCurrentProfileName(userDirectory);
-    const profiles = await getProfileMap(userDirectory);
+    const currentProfileName = await getCurrentProfileName(context);
+    const profiles = await getProfileMap(context);
     const currentProfilePath = path.join(profiles[currentProfileName], "settings.json");
 
     // Remove the inherited settings from the current profile:
     removeInheritedSettingsFromFile(currentProfilePath);
 
     // Get the settings that the current profile should inherit:
-    const inheritedSettings = await getInheritedSettings(userDirectory);
+    const inheritedSettings = await getInheritedSettings(context);
     const totalInheritedSettings = Object.keys(inheritedSettings).length;
     console.info(`Found ${totalInheritedSettings} inherited settings for \`${currentProfileName}\` profile.`);
     if (totalInheritedSettings === 0) {
@@ -349,10 +375,10 @@ async function applyInheritedSettings(userDirectory: string): Promise<void> {
 
 /**
  * Updates the inherited settings for the current profile.
+ * @param context Extension context.
  */
-export async function updateCurrentProfileInheritance(): Promise<void> {
-    const userDirectory = getUserDirectory();
-    await applyInheritedSettings(userDirectory);
+export async function updateCurrentProfileInheritance(context: vscode.ExtensionContext): Promise<void> {
+    await applyInheritedSettings(context);
 
     const config = vscode.workspace.getConfiguration("inheritProfile");
     if (config.get<boolean>("showMessages", true)) {
@@ -360,10 +386,13 @@ export async function updateCurrentProfileInheritance(): Promise<void> {
     }
 }
 
-export async function removeCurrentProfileInheritedSettings(): Promise<void> {
-    const userDirectory = getUserDirectory();
-    const currentProfileName = await getCurrentProfileName(userDirectory);
-    const profiles = await getProfileMap(userDirectory);
+/**
+ * Removes the inherited settings from the current profile.
+ * @param context Extension context.
+ */
+export async function removeCurrentProfileInheritedSettings(context: vscode.ExtensionContext): Promise<void> {
+    const currentProfileName = await getCurrentProfileName(context);
+    const profiles = await getProfileMap(context);
     const currentProfilePath = path.join(profiles[currentProfileName], "settings.json");
     await removeInheritedSettingsFromFile(currentProfilePath);
 
@@ -375,19 +404,19 @@ export async function removeCurrentProfileInheritedSettings(): Promise<void> {
 
 /**
  * Updates the inherited settings when the profile changes.
+ * @param context Extension context.
  */
 export async function updateInheritedSettingsOnProfileChange(context: vscode.ExtensionContext) {
-    const userDirectory = getUserDirectory();
-    const globalStoragePath = getGlobalStoragePath(userDirectory);
-    let currentProfile = await getCurrentProfileName(userDirectory);
+    const globalStoragePath = getGlobalStoragePath(context);
+    let currentProfile = await getCurrentProfileName(context);
 
     const watcher = vscode.workspace.createFileSystemWatcher(globalStoragePath);
     const onChange = async () => {
-        const newProfileName = await getCurrentProfileName(userDirectory);
+        const newProfileName = await getCurrentProfileName(context);
         if (newProfileName !== currentProfile) {
             currentProfile = newProfileName;
             console.info("Current profile has changed, updating inherited settings...");
-            await updateCurrentProfileInheritance();
+            await updateCurrentProfileInheritance(context);
         }
     };
     watcher.onDidChange(onChange);
