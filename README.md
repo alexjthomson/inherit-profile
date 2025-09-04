@@ -1,4 +1,4 @@
-# ⚙️ Inherit Profile (inherit-profile)
+# ⚙️ Inherit Profile
 Enables profile inheritance in VisualStudio Code!
 
 ---
