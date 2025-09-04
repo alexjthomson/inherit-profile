@@ -42,7 +42,7 @@
             "type": "string"
           },
           "default": [],
-          "description": "List of profile names this profile should inherit settings from."
+          "description": "Names of the profiles to inherit settings from."
         },
         "inheritProfile.runOnStartup": {
           "type": "boolean",
@@ -57,7 +57,7 @@
         "inheritProfile.showMessages": {
           "type": "boolean",
           "default": false,
-          "description": "Shows a message when ever settings are inherited into the current profile."
+          "description": "Shows a message when settings are inherited or removed."
         }
       }
     }
