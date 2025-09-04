@@ -1,0 +1,31 @@
+# Node dependencies:
+node_modules/
+
+# Build output:
+out/
+dist/
+
+# Logs:
+npm-debug.log*
+
+# OS junk:
+.DS_Store
+Thumbs.db
+
+# VS Code:
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
+.vscode-test/*
+.vscode-test.mjs
+
+# TypeScript build cache:
+*.tsbuildinfo
+
+# Test coverage:
+coverage/
+
+# Packaged extensions:
+*.vsix
+
