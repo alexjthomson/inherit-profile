@@ -100,7 +100,17 @@ the extension will subtract the current profile settings from the inherited sett
 > __Note__: Since `"one.hello"` was already defined in the current profile, the extension knows not to inherit this from the parent profiles since the current profile takes priority.
 
 ### 3: Inserting the Final Inherited Settings
-The final inherited settings are then inserted into the current profile between a start and an end marker.
+The final inherited settings are then inserted into the current profile between a start and an end marker. This will result in the final configuration for the profile:
+```json
+{
+    "one": {
+        "hello": "something"
+    },
+    // --- INHERITED SETTINGS MARKER START --- //
+    "two": "some other value"
+    // --- INHERITED SETTINGS MARKER END --- //
+}
+```
 > __Note__: It is important that the start and end markers are left alone. These are used by the extension to identify the settings that have been inherited to the current profile.
 
 ---
