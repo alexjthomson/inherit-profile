@@ -16,6 +16,28 @@
   "categories": [
     "Other"
   ],
+  "keywords": [
+    "profile",
+    "profiles",
+    "setting",
+    "settings",
+    "settings sync",
+    "sync",
+    "inheritance",
+    "inherit",
+    "configuration",
+    "config",
+    "configs",
+    "workspace"
+  ],
+  "homepage": "https://github.com/alexjthomson/inherit-profile#readme",
+  "bugs": {
+    "url": "https://github.com/alexjthomson/inherit-profile/issues"
+  },
+  "galleryBanner": {
+    "color": "#1e1e1e",
+    "theme": "dark"
+  },
   "activationEvents": [
     "onStartupFinished"
   ],
