@@ -1,6 +1,5 @@
 import * as vscode from "vscode";
 import * as path from "path";
-import * as os from "os";
 import * as fs from "fs/promises";
 import { parse } from "jsonc-parser";
 
@@ -62,32 +61,51 @@ async function getCustomProfiles(context: vscode.ExtensionContext): Promise<any[
 }
 
 /**
- * Finds a record by it's `id`.
+ * Finds a record by a key value pair within the record.
  * @param obj Object to search.
- * @param targetId Target ID to search for.
+ * @param key Key to search.
+ * @param value Expected value of the key.
  * @returns Returns the record with the given ID.
  */
-function findById(obj: Record<string, any>, targetId: string): any | undefined {
-    if (typeof obj !== "object" || obj === null) {
-        return undefined;
-    }
+function findByKeyValuePair(
+  input: unknown,
+  key: string,
+  value: unknown
+): any | undefined {
+    const seen = new Set<object>();
 
-    // If this object has the matching id, return it
-    if (obj.id === targetId) {
-        return obj;
-    }
+    function dfs(node: unknown): any | undefined {
+        if (node === null || typeof node !== "object") {
+            return undefined;
+        }
+        if (seen.has(node as object)) {
+            return undefined;
+        }
+        seen.add(node as object);
 
-    // Search inside each property
-    for (const value of Object.values(obj)) {
-        if (typeof value === "object" && value !== null) {
-            const found = findById(value, targetId);
+        if (!Array.isArray(node)) {
+        if (Object.prototype.hasOwnProperty.call(node, key) && (node as any)[key] === value) {
+            return node;
+        }
+        for (const v of Object.values(node as Record<string, unknown>)) {
+            const found = dfs(v);
             if (found) {
                 return found;
             }
         }
+        } else {
+        for (const item of node as unknown[]) {
+            const found = dfs(item);
+            if (found) {
+                return found;
+            }
+        }
+        }
+
+        return undefined;
     }
 
-    return undefined;
+    return dfs(input);
 }
 
 /**
@@ -97,12 +115,17 @@ function findById(obj: Record<string, any>, targetId: string): any | undefined {
  */
 async function getCurrentProfileName(context: vscode.ExtensionContext): Promise<string> {
     const storage = await readGlobalStorage(context);
-    const profilesSubMenu = findById(storage, "submenuitem.Profiles");
+    const profilesSubMenu = findByKeyValuePair(storage, "id", "submenuitem.Profiles");
     if (profilesSubMenu) {
         const submenuItems = profilesSubMenu.submenu.items;
         for (const submenuItem of submenuItems) {
             if (submenuItem.checked) {
-                return submenuItem.label;
+                const fullProfileId: string = submenuItem.id;
+                const profileId = fullProfileId.substring(fullProfileId.lastIndexOf(".") + 1);
+                const profileData = findByKeyValuePair(storage, "location", profileId);
+                if (profileData) {
+                    return profileData.name;
+                }
             }
         }
     }
@@ -355,7 +378,11 @@ async function applyInheritedSettings(context: vscode.ExtensionContext): Promise
     // Get the path to the current profile settings:
     const currentProfileName = await getCurrentProfileName(context);
     const profiles = await getProfileMap(context);
-    const currentProfilePath = path.join(profiles[currentProfileName], "settings.json");
+    const currentProfileDirectory = profiles[currentProfileName];
+    if (!currentProfileDirectory) {
+        console.error(`Unable to find current profile directory for \`${currentProfileName}\` profile.`);
+    }
+    const currentProfilePath = path.join(currentProfileDirectory, "settings.json");
 
     // Remove the inherited settings from the current profile:
     removeInheritedSettingsFromFile(currentProfilePath);
@@ -393,7 +420,11 @@ export async function updateCurrentProfileInheritance(context: vscode.ExtensionC
 export async function removeCurrentProfileInheritedSettings(context: vscode.ExtensionContext): Promise<void> {
     const currentProfileName = await getCurrentProfileName(context);
     const profiles = await getProfileMap(context);
-    const currentProfilePath = path.join(profiles[currentProfileName], "settings.json");
+    const currentProfileDirectory = profiles[currentProfileName];
+    if (!currentProfileDirectory) {
+        console.error(`Unable to find current profile directory for \`${currentProfileName}\` profile.`);
+    }
+    const currentProfilePath = path.join(currentProfileDirectory, "settings.json");
     await removeInheritedSettingsFromFile(currentProfilePath);
 
     const config = vscode.workspace.getConfiguration("inheritProfile");
