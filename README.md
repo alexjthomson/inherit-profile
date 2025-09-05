@@ -124,3 +124,5 @@ The final inherited settings are then inserted into the current profile between 
 - [ ] Tidy up [`profiles.ts`](src/profiles.ts).
 - [ ] Implement extension inheritance. This should be disabled by default, but
   should be possible to enable through configuration.
+- [ ] Implement unit testing.
+- [ ] Implement proper CI with auto-release.
