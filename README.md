@@ -116,6 +116,8 @@ The final inherited settings are then inserted into the current profile between 
 ---
 
 ## 🎯 Future Plans
+- [ ] Update the profile inheritance when the current profile is saved. This should have a configuration entry for it.
+- [ ] Update the profile inheritance when one of the parent profiles is saved. This should have a configuration entry for it.
 - [ ] Insert inherited settings alphabetically.
 - [ ] Implement formatting for inherited settings (indentation).
 - [ ] Add a warning comment inside the inherited settings.
