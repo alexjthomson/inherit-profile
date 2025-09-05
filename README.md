@@ -46,7 +46,7 @@ __Inheritance Priority__: This extension respects the settings you declare in yo
 
 ---
 
-## How Does This Extension Work?
+## 💡 How Does This Extension Work?
 This extension allows you to inherit from multiple other profiles. In order to apply settings, you must include them in either the global, workspace, workspace file, or profile settings file. This extension places inherited settings directly into the profile `settings.json`.
 
 ### 1: Collecting the Inherited Settings
@@ -55,7 +55,7 @@ First, the extension will read the settings for each of the profiles you have el
 #### Example
 Let's say you have two profiles you want to inherit from:
 
-##### Profile 1
+##### 📝 Profile 1
 ```json
 {
     "one": {
@@ -65,7 +65,7 @@ Let's say you have two profiles you want to inherit from:
 }
 ```
 
-##### Profile 2
+##### 📝 Profile 2
 ```json
 {
     "two": "some other value"
@@ -73,7 +73,7 @@ Let's say you have two profiles you want to inherit from:
 ```
 > __Note__: This profile also has the `"two"` setting. The extension will resolve which value to use based on the order that the parent profiles are declared later on.
 
-##### Result
+##### 🎬 Result
 Let's say you want to inherit using `"inheritProfile.parents": [ "Profile 1", "Profile 2" ]`; the inherited settings will evaluate to this:
 ```json
 {
