@@ -52,10 +52,9 @@ This extension allows you to inherit from multiple other profiles. In order to a
 ### 1: Collecting the Inherited Settings
 First, the extension will read the settings for each of the profiles you have elected to inherit from. It will then flatten each of the settings keys into a single string key and store it alongside it's value. As the extension iterates through the different `settings.json` files from each inherited profile, it will override any existing settings with new ones. This is done according to the order that the profiles appear in in the `inheritProfile.parents` setting.
 
-#### Example
 Let's say you have two profiles you want to inherit from:
 
-##### 📝 Profile 1
+#### 📝 Profile 1
 ```json
 {
     "one": {
@@ -65,7 +64,7 @@ Let's say you have two profiles you want to inherit from:
 }
 ```
 
-##### 📝 Profile 2
+#### 📝 Profile 2
 ```json
 {
     "two": "some other value"
@@ -73,7 +72,7 @@ Let's say you have two profiles you want to inherit from:
 ```
 > __Note__: This profile also has the `"two"` setting. The extension will resolve which value to use based on the order that the parent profiles are declared later on.
 
-##### 🎬 Result
+#### 🎬 Result
 Let's say you want to inherit using `"inheritProfile.parents": [ "Profile 1", "Profile 2" ]`; the inherited settings will evaluate to this:
 ```json
 {
