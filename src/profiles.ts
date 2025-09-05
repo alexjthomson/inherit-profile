@@ -301,8 +301,14 @@ async function removeInheritedSettingsFromFile(settingsPath: string): Promise<vo
         return; // markers not found, leave file alone
     }
 
-    // Keep everything before start marker
-    let cleaned = raw.slice(0, startIndex).trimEnd();
+    // Everything before start marker
+    let before = raw.slice(0, startIndex);
+
+    // Everything after the end marker
+    let after = raw.slice(endIndex + INHERITED_SETTINGS_END_MARKER.length);
+
+    // Combine both
+    let cleaned = (before + after).trimEnd();
 
     // Ensure the JSON ends properly
     if (!cleaned.endsWith("}")) {
@@ -315,8 +321,13 @@ async function removeInheritedSettingsFromFile(settingsPath: string): Promise<vo
 
 /**
  * Writes a set of inherited settings to a settings path.
- * It will replace everything between the START and END markers.
- * If the markers don't exist, they will be added before the closing brace.
+ * 
+ * IMPORTANT: This function assumes that there are no inherited settings in the
+ * file. Any inherited settings should be removed before calling this function.
+ */
+/**
+ * Writes a set of inherited settings to a settings path.
+ * Assumes no existing markers in the file.
  */
 async function writeInheritedSettings(
     settingsPath: string,
@@ -326,46 +337,44 @@ async function writeInheritedSettings(
     try {
         raw = await fs.readFile(settingsPath, "utf8");
     } catch {
-        raw = "{\n}\n"; // new file if missing
+        raw = "{\n}\n"; // start fresh if missing
     }
 
-    let beforeMarker: string;
-
-    if (raw.includes(INHERITED_SETTINGS_START_MARKER)) {
-        // Strip out the old block (everything between start and end markers)
-        const startIndex = raw.indexOf(INHERITED_SETTINGS_START_MARKER);
-        const endIndex = raw.indexOf(INHERITED_SETTINGS_END_MARKER);
-        if (endIndex !== -1) {
-        beforeMarker = raw.slice(0, startIndex);
-        } else {
-        // no END marker — treat as before start
-        beforeMarker = raw.slice(0, startIndex);
-        }
-    } else {
-        // Remove final } so we can append marker block at the end
-        beforeMarker = raw.replace(/\}\s*$/, "");
-        if (!beforeMarker.trim().endsWith(",")) {
-        beforeMarker = beforeMarker.trimEnd().replace(/,$/, "");
-        if (!beforeMarker.trim().endsWith("{")) {
-            beforeMarker += ",";
-        }
-        }
-        beforeMarker += "\n";
+    let closeIdx = raw.lastIndexOf("}");
+    if (closeIdx === -1) {
+        raw = "{\n}\n";
+        closeIdx = raw.lastIndexOf("}");
     }
 
-    // Build new block of inherited settings
-    const newBlockLines = Object.entries(flattened).map(
-        ([key, value]) => `    "${key}": ${JSON.stringify(value)}`
-    );
+    const beforeClose = raw.slice(0, closeIdx);
+    const afterClose = raw.slice(closeIdx); // includes final }
 
-    const newContent =
-        beforeMarker +
+    const hasEntries = Object.keys(flattened).length > 0;
+    const trimmed = beforeClose.trimEnd();
+    const needsComma =
+        hasEntries &&
+        /\S/.test(beforeClose) &&
+        !trimmed.endsWith("{") &&
+        !trimmed.endsWith(",");
+
+    const entries = Object.entries(flattened)
+        .map(([key, value]) => `    "${key}": ${JSON.stringify(value)}`)
+        .join(",\n");
+
+    const block =
         INHERITED_SETTINGS_START_MARKER +
         "\n" +
-        newBlockLines.join(",\n") +
-        "\n" +
+        entries +
+        (entries ? "\n" : "") +
         INHERITED_SETTINGS_END_MARKER +
-        "\n}\n";
+        "\n";
+
+    const left =
+        (needsComma
+        ? beforeClose.replace(/\s*$/, ",\n")
+        : beforeClose.replace(/\s*$/, "\n")) + block;
+
+    const newContent = left + afterClose;
 
     await fs.writeFile(settingsPath, newContent, "utf8");
 }
