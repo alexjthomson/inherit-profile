@@ -43,6 +43,9 @@ extension starts.
 ---
 
 ## 🎯 Future Plans
+- [ ] Implement formatting for inherited settings (indentation).
+- [ ] Add a warning comment inside the inherited settings.
+- [ ] Sort the inherited settings alphabetically.
 - [ ] Tidy up [`profiles.ts`](src/profiles.ts).
 - [ ] Implement extension inheritance. This should be disabled by default, but
   should be possible to enable through configuration.
