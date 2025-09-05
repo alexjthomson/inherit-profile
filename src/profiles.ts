@@ -299,42 +299,143 @@ async function getInheritedSettings(context: vscode.ExtensionContext): Promise<R
 const INHERITED_SETTINGS_START_MARKER = "// --- INHERITED SETTINGS MARKER START --- //";
 const INHERITED_SETTINGS_END_MARKER = "// --- INHERITED SETTINGS MARKER END --- //";
 
+const WARNING_COMMENT = "// WARNING: Do not remove the inherited settings start and end markers.";
+const WARNING_EXPLAIN = "//          The markers are used to identify inserted inherited settings.";
+
 /**
- * Removes the inherited settings block (including the markers) from a settings file.
+ * Removes the inherited settings block (including the markers) from a settings
+ * file.
+ * 
  * If no markers are found, the file is left unchanged.
  */
 async function removeInheritedSettingsFromFile(settingsPath: string): Promise<void> {
     console.info(`Removing inherited settings from \`${settingsPath}\`.`);
-    let raw = "";
-    try {
-        raw = await fs.readFile(settingsPath, "utf8");
-    } catch {
-        return; // nothing to do if file doesn't exist
-    }
 
+    // Find the start and end markers:
+    let raw = await readRawSettingsFile(settingsPath);
     const startIndex = raw.indexOf(INHERITED_SETTINGS_START_MARKER);
     const endIndex = raw.indexOf(INHERITED_SETTINGS_END_MARKER);
 
+    // Ensure the markers exist:
     if (startIndex === -1 || endIndex === -1 || endIndex < startIndex) {
+        if (startIndex !== endIndex) {
+            console.warn("Either the start or end marker is missing in the current profile.");
+        }
         return; // markers not found, leave file alone
     }
 
-    // Everything before start marker
-    let before = raw.slice(0, startIndex);
+    // Clean response:
+    const before = raw.slice(0, startIndex);
+    const after = raw.slice(endIndex + INHERITED_SETTINGS_END_MARKER.length);
+    let cleaned = (before.trimEnd() + after.trimEnd());
 
-    // Everything after the end marker
-    let after = raw.slice(endIndex + INHERITED_SETTINGS_END_MARKER.length);
-
-    // Combine both
-    let cleaned = (before + after).trimEnd();
-
-    // Ensure the JSON ends properly
+    // Ensure JSONC ends properly:
+    cleaned = removeTrailingComma(cleaned);
     if (!cleaned.endsWith("}")) {
-        cleaned = cleaned.replace(/,+\s*$/, ""); // remove trailing comma
         cleaned += "\n}";
     }
 
+    // Write cleaned file:
     await fs.writeFile(settingsPath, cleaned + "\n", "utf8");
+}
+
+/**
+ * Removes the last trailing comma from a JSONC (JSON with Comments) string.
+ * It correctly handles single-line, multi-line, and comments within strings.
+ * A trailing comma is defined as a comma that is the last meaningful character,
+ * or a comma that is the second-to-last meaningful character followed only by a
+ * closing brace '}' or bracket ']'.
+ *
+ * @param text The JSONC content as a string.
+ * @returns A new string with the trailing comma removed, or the original string if no trailing comma was found.
+ */
+function removeTrailingComma(text: string): string {
+  let lastMeaningfulIndex = -1;
+  let secondToLastMeaningfulIndex = -1;
+
+  let inMultiLineComment = false;
+  let inString = false;
+  let stringChar = ''; // Can be ' or "
+
+  // This loop is similar to getLastMeaningfulCharacterIndex, but tracks the last TWO meaningful characters.
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    const prevChar = text[i - 1];
+    const nextChar = text[i + 1];
+
+    // State 1: Inside a multi-line comment
+    if (inMultiLineComment) {
+      if (char === '*' && nextChar === '/') {
+        inMultiLineComment = false;
+        i++; // Consume the '/'
+      }
+      continue;
+    }
+
+    // State 2: Inside a string
+    if (inString) {
+      if (char === stringChar && prevChar !== '\\') {
+        inString = false;
+      }
+      secondToLastMeaningfulIndex = lastMeaningfulIndex;
+      lastMeaningfulIndex = i;
+      continue;
+    }
+
+    // State 3: Default state (not in a comment or string)
+    if (char === '/' && nextChar === '/') {
+      const newlineIndex = text.indexOf('\n', i);
+      if (newlineIndex === -1) {
+        break; // End of file is a comment
+      }
+      i = newlineIndex;
+      continue;
+    }
+
+    if (char === '/' && nextChar === '*') {
+      inMultiLineComment = true;
+      i++; // Consume the '*'
+      continue;
+    }
+
+    if (char === '"' || char === "'") {
+      inString = true;
+      stringChar = char;
+      secondToLastMeaningfulIndex = lastMeaningfulIndex;
+      lastMeaningfulIndex = i;
+      continue;
+    }
+
+    if (!/\s/.test(char)) {
+      secondToLastMeaningfulIndex = lastMeaningfulIndex;
+      lastMeaningfulIndex = i;
+    }
+  }
+
+  // After parsing, check if we found a trailing comma.
+  if (lastMeaningfulIndex === -1) {
+    return text; // No meaningful characters found.
+  }
+
+  const lastMeaningfulChar = text[lastMeaningfulIndex];
+
+  // Case 1: The very last meaningful character is a comma.
+  // e.g., { "a": 1, }
+  if (lastMeaningfulChar === ',') {
+    return text.slice(0, lastMeaningfulIndex) + text.slice(lastMeaningfulIndex + 1);
+  }
+
+  // Case 2: The last character is a brace/bracket, and the one before it is a comma.
+  // e.g. { "a": 1, }
+  if ((lastMeaningfulChar === '}' || lastMeaningfulChar === ']') && secondToLastMeaningfulIndex !== -1) {
+    const secondToLastMeaningfulChar = text[secondToLastMeaningfulIndex];
+    if (secondToLastMeaningfulChar === ',') {
+      return text.slice(0, secondToLastMeaningfulIndex) + text.slice(secondToLastMeaningfulIndex + 1);
+    }
+  }
+
+  // If neither of the above conditions are met, there's no trailing comma to remove.
+  return text;
 }
 
 /**
@@ -343,58 +444,258 @@ async function removeInheritedSettingsFromFile(settingsPath: string): Promise<vo
  * IMPORTANT: This function assumes that there are no inherited settings in the
  * file. Any inherited settings should be removed before calling this function.
  */
-/**
- * Writes a set of inherited settings to a settings path.
- * Assumes no existing markers in the file.
- */
 async function writeInheritedSettings(
     settingsPath: string,
     flattened: Record<string, any>
 ): Promise<void> {
-    let raw = "";
-    try {
-        raw = await fs.readFile(settingsPath, "utf8");
-    } catch {
-        raw = "{\n}\n"; // start fresh if missing
+    // Early exit if there is nothing to add:
+    if (Object.keys(flattened).length === 0) {
+        return;
     }
 
-    let closeIdx = raw.lastIndexOf("}");
-    if (closeIdx === -1) {
-        raw = "{\n}\n";
-        closeIdx = raw.lastIndexOf("}");
+    // Read the raw file, split it by the closing brace, and get the tab size
+    // for formatting:
+    const raw = await readRawSettingsFile(settingsPath);
+    const [beforeClose, afterClose] = await splitRawSettingsByClosingBrace(raw);
+    const tab = findTabValue(raw);
+
+    // Build the inherited settings block:
+    const block = buildInheritedSettingsBlock(flattened, tab);
+
+    // Insert the inherited settings block between the before and after closing
+    // brace blocks:
+    const beforeClosePlusBlock = insertBeforeClose(beforeClose, block);
+    const finalSettings = beforeClosePlusBlock + afterClose;
+
+    // Write the final settings to the settings path:
+    await fs.writeFile(settingsPath, finalSettings, "utf8");
+}
+
+/**
+ * Reads and returns a raw `settings.json` file.
+ */
+async function readRawSettingsFile(settingsPath: string): Promise<string> {
+    // Read the raw file:
+    // NOTE: This will throw an exception if the file cannot be read.
+    return await fs.readFile(settingsPath, "utf8");
+}
+
+/**
+ * Returns the `raw file in two parts:
+ * 1. The content before the closing brace (excluding the closing brace).
+ * 2. The content after and including the closing brace.
+ * 
+ * @param raw Raw `settings.json` file.
+ * @returns Returns `raw` in two parts: before, and after the closing brace.
+ */
+function splitRawSettingsByClosingBrace(raw: string): [beforeClose: string, afterClose: string] {
+    // Split the file by the closing brace:
+    let closingIndex = raw.lastIndexOf("}");
+    if (closingIndex === -1) {
+        return ["{\n", "}\n"];
     }
 
-    const beforeClose = raw.slice(0, closeIdx);
-    const afterClose = raw.slice(closeIdx); // includes final }
+    const beforeClose = raw.slice(0, closingIndex);
+    const afterClose = raw.slice(closingIndex);
+    return [beforeClose, afterClose];
+}
 
-    const hasEntries = Object.keys(flattened).length > 0;
-    const trimmed = beforeClose.trimEnd();
-    const needsComma =
-        hasEntries &&
-        /\S/.test(beforeClose) &&
-        !trimmed.endsWith("{") &&
-        !trimmed.endsWith(",");
+/**
+ * Attempts to detect the tab string used in a JSON/JSONC file.
+ * Returns either "\t" for tabs or a string of spaces (usually 2 or 4).
+ * Defaults to 4 spaces if detection fails.
+ */
+function findTabValue(raw: string): string {
+    const lines = raw.split(/\r?\n/);
 
+    for (const line of lines) {
+        // Skip empty lines and lines without leading whitespace:
+        if (!line.trim()) {
+            continue;
+        }
+
+        const match = line.match(/^( +|\t+)/);
+        if (!match) {
+            continue;
+        }
+
+        const indent = match[1];
+        if (indent[0] === "\t") {
+            return "\t"; // Tabs detected
+        }
+
+        // Spaces: measure run length
+        return " ".repeat(indent.length);
+    }
+
+    // Fallback tab size:
+    return "    ";
+}
+
+/**
+ * Builds the inherited settings block with start, warning, entries, and end.
+ * 
+ * @param flattened Flattened settings to insert into the settings block.
+ * @param tab Tab sequence to use.
+ * @returns Returns the raw inherited settings block.
+ */
+function buildInheritedSettingsBlock(
+    flattened: Record<string, string>,
+    tab: string,
+): string {
     const entries = Object.entries(flattened)
-        .map(([key, value]) => `    "${key}": ${JSON.stringify(value)}`)
+        .map(([key, value]) => `${tab}"${key}": ${JSON.stringify(value)}`)
         .join(",\n");
 
-    const block =
-        INHERITED_SETTINGS_START_MARKER +
-        "\n" +
-        entries +
-        (entries ? "\n" : "") +
-        INHERITED_SETTINGS_END_MARKER +
-        "\n";
+    return (
+        tab + INHERITED_SETTINGS_START_MARKER + "\n" +
+        tab + WARNING_COMMENT + "\n" +
+        tab + WARNING_EXPLAIN + "\n" +
+        entries + (entries ? "\n" : "") +
+        tab + INHERITED_SETTINGS_END_MARKER + "\n"
+    );
+}
 
-    const left =
-        (needsComma
-        ? beforeClose.replace(/\s*$/, ",\n")
-        : beforeClose.replace(/\s*$/, "\n")) + block;
+/**
+ * Inserts block before closing brace, handling commas and trailing comments.
+ * 
+ * Does not remove or modify user comments.
+ * 
+ * @returns Returns a string starting with the `beforeClose` block, followed by
+ * the `block`. The returned string is formatted JSONC without the final closing
+ * bracket.
+ */
+function insertBeforeClose(
+    beforeClose: string,
+    block: string,
+): string {
+    // Check last non-comment character:
+    const meaningfulCharIndex = getLastMeaningfulCharacterIndex(beforeClose);
+    if (meaningfulCharIndex === -1) {
+        console.warn("No meaningful text found when attempting to insert `block` after `beforeClose`.");
+        return beforeClose.replace(/\s*$/, "\n") + block;
+    }
+    const meaningfulChar = beforeClose[meaningfulCharIndex];
 
-    const newContent = left + afterClose;
+    // Calculate if we should insert a comma after the last meaningful character
+    // index:
+    const needsComma =
+        /\S/.test(beforeClose) &&
+        meaningfulChar !== "{" &&
+        meaningfulChar !== ",";
 
-    await fs.writeFile(settingsPath, newContent, "utf8");
+    // Exit early if we do not need to insert a comma:
+    if (!needsComma) {
+        return beforeClose.replace(/\s*$/, "\n") + block;
+    }
+
+    // Insert a comma after the last meaningful character:
+    const before = beforeClose.slice(0, meaningfulCharIndex + 1);
+    const after = beforeClose.slice(meaningfulCharIndex + 1);
+
+    return before + "," + after.replace(/\s*$/, "\n") + block;
+}
+
+/**
+ * Iterates through each line in a string, yielding [line, startIndex].
+ * 
+ * Handles both LF and CRLF endings.
+ */
+function* iterateLines(text: string): Generator<[string, number]> {
+    let start = 0;
+
+    for (let i = 0; i < text.length; i++) {
+        if (text[i] === "\n") {
+            // Handle CRLF (\r\n)
+            const line = text.slice(start, text[i - 1] === "\r" ? i - 1 : i);
+            yield [line, start];
+            start = i + 1;
+        }
+    }
+
+    // Final line (if text doesn’t end with a newline)
+    if (start <= text.length) {
+        yield [text.slice(start), start];
+    }
+}
+
+/**
+ * Finds the index of the last meaningful character in a JSONC (JSON with Comments) string.
+ * A "meaningful" character is one that is not part of a single-line or multi-line comment,
+ * and is not whitespace. Characters within strings are considered meaningful.
+ *
+ * @param text The JSONC content as a string.
+ * @returns The zero-based index of the last meaningful character, or -1 if none is found.
+ */
+function getLastMeaningfulCharacterIndex(text: string): number {
+  let lastMeaningfulIndex = -1;
+  let inMultiLineComment = false;
+  let inString = false;
+  let stringChar = ''; // Can be ' or "
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    const prevChar = text[i - 1];
+    const nextChar = text[i + 1];
+
+    // State 1: Inside a multi-line comment
+    if (inMultiLineComment) {
+      if (char === '*' && nextChar === '/') {
+        inMultiLineComment = false;
+        i++; // Consume the '/' as well
+      }
+      continue;
+    }
+
+    // State 2: Inside a string
+    if (inString) {
+      // Check for the closing quote, ensuring it's not escaped
+      if (char === stringChar && prevChar !== '\\') {
+        inString = false;
+      }
+      // All characters inside a string are considered meaningful for this function's purpose.
+      lastMeaningfulIndex = i;
+      continue;
+    }
+
+    // State 3: Default state (not in a comment or string)
+    // Check for the start of a single-line comment
+    if (char === '/' && nextChar === '/') {
+      // Find the next newline character
+      const newlineIndex = text.indexOf('\n', i);
+      if (newlineIndex === -1) {
+        // No more newlines, so the rest of the file is a comment.
+        // We can stop processing.
+        break;
+      }
+      // Jump execution to the newline character. The loop's i++ will move to the next line.
+      i = newlineIndex;
+      continue;
+    }
+
+    // Check for the start of a multi-line comment
+    if (char === '/' && nextChar === '*') {
+      inMultiLineComment = true;
+      i++; // Consume the '*' as well
+      continue;
+    }
+
+    // Check for the start of a string (handles both double and single quotes)
+    if (char === '"' || char === "'") {
+      inString = true;
+      stringChar = char;
+      lastMeaningfulIndex = i;
+      continue;
+    }
+
+    // If we've reached this point, we are in a "normal" code context.
+    // A character is meaningful if it's not whitespace.
+    if (!/\s/.test(char)) {
+      lastMeaningfulIndex = i;
+    }
+  }
+
+  return lastMeaningfulIndex;
 }
 
 /**

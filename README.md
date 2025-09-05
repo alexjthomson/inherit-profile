@@ -119,9 +119,8 @@ The final inherited settings are then inserted into the current profile between 
 - [ ] Update the profile inheritance when the current profile is saved. This should have a configuration entry for it.
 - [ ] Update the profile inheritance when one of the parent profiles is saved. This should have a configuration entry for it.
 - [x] Insert inherited settings alphabetically.
-- [ ] Implement formatting for inherited settings (indentation).
-- [ ] Add a warning comment inside the inherited settings.
-- [ ] Sort the inherited settings alphabetically.
+- [x] Implement formatting for inherited settings (indentation).
+- [x] Add a warning comment inside the inherited settings.
 - [ ] Tidy up [`profiles.ts`](src/profiles.ts).
 - [ ] Implement extension inheritance. This should be disabled by default, but
   should be possible to enable through configuration.
