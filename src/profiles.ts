@@ -260,6 +260,22 @@ function subtractSettings(
 }
 
 /**
+ * Sorts a given set of `settings` alphabetically (A to Z).
+ * @param settings Settings to sort alphabetically.
+ * @returns Returns the `settings`, but sorted alphabetically (A to Z).
+ */
+function sortSettings(
+    settings: Record<string, string>
+): Record<string, string> {
+    return Object.keys(settings)
+        .sort((a, b) => a.localeCompare(b))
+        .reduce<Record<string, string>>((acc, key) => {
+            acc[key] = settings[key];
+            return acc;
+        }, {});
+}
+
+/**
  * Gets the settings that are missing from the current profile.
  * @param context Extension context.
  * @returns Returns the flattened settings that are missing from the current profile.
@@ -275,7 +291,9 @@ async function getInheritedSettings(context: vscode.ExtensionContext): Promise<R
 
     const inheritedSettings = subtractSettings(parentProfileSettings, currentProfileSettings);
     console.info(`Found ${Object.keys(inheritedSettings).length} inherited in from parent profiles.`);
-    return inheritedSettings;
+
+    const sortedInheritedSettings = sortSettings(inheritedSettings);
+    return sortedInheritedSettings;
 }
 
 const INHERITED_SETTINGS_START_MARKER = "// --- INHERITED SETTINGS MARKER START --- //";
