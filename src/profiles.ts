@@ -68,9 +68,9 @@ async function getCustomProfiles(context: vscode.ExtensionContext): Promise<any[
  * @returns Returns the record with the given ID.
  */
 function findByKeyValuePair(
-  input: unknown,
-  key: string,
-  value: unknown
+    input: unknown,
+    key: string,
+    value: unknown
 ): any | undefined {
     const seen = new Set<object>();
 
@@ -84,22 +84,22 @@ function findByKeyValuePair(
         seen.add(node as object);
 
         if (!Array.isArray(node)) {
-        if (Object.prototype.hasOwnProperty.call(node, key) && (node as any)[key] === value) {
-            return node;
-        }
-        for (const v of Object.values(node as Record<string, unknown>)) {
-            const found = dfs(v);
-            if (found) {
-                return found;
+            if (Object.prototype.hasOwnProperty.call(node, key) && (node as any)[key] === value) {
+                return node;
             }
-        }
+            for (const v of Object.values(node as Record<string, unknown>)) {
+                const found = dfs(v);
+                if (found) {
+                    return found;
+                }
+            }
         } else {
-        for (const item of node as unknown[]) {
-            const found = dfs(item);
-            if (found) {
-                return found;
+            for (const item of node as unknown[]) {
+                const found = dfs(item);
+                if (found) {
+                    return found;
+                }
             }
-        }
         }
 
         return undefined;
@@ -128,6 +128,13 @@ async function getCurrentProfileName(context: vscode.ExtensionContext): Promise<
                 }
             }
         }
+    }
+    
+    const workspaceUri: vscode.Uri | undefined = vscode.workspace.workspaceFile || vscode.workspace.workspaceFolders?.at(0)?.uri;
+    if (workspaceUri) {
+        const profileId = storage.profileAssociations.workspaces[workspaceUri.toString()];
+        const profile = findByKeyValuePair(storage.userDataProfiles, "location", profileId);
+        return profile?.name || "Default";
     }
     return "Default";
 }
@@ -253,7 +260,7 @@ function subtractSettings(
     const result: Record<string, string> = {};
     for (const [key, value] of Object.entries(base)) {
         if (!(key in toRemove)) {
-        result[key] = value;
+            result[key] = value;
         }
     }
     return result;
@@ -350,92 +357,92 @@ async function removeInheritedSettingsFromFile(settingsPath: string): Promise<vo
  * @returns A new string with the trailing comma removed, or the original string if no trailing comma was found.
  */
 function removeTrailingComma(text: string): string {
-  let lastMeaningfulIndex = -1;
-  let secondToLastMeaningfulIndex = -1;
+    let lastMeaningfulIndex = -1;
+    let secondToLastMeaningfulIndex = -1;
 
-  let inMultiLineComment = false;
-  let inString = false;
-  let stringChar = ''; // Can be ' or "
+    let inMultiLineComment = false;
+    let inString = false;
+    let stringChar = ''; // Can be ' or "
 
-  // This loop is similar to getLastMeaningfulCharacterIndex, but tracks the last TWO meaningful characters.
-  for (let i = 0; i < text.length; i++) {
-    const char = text[i];
-    const prevChar = text[i - 1];
-    const nextChar = text[i + 1];
+    // This loop is similar to getLastMeaningfulCharacterIndex, but tracks the last TWO meaningful characters.
+    for (let i = 0; i < text.length; i++) {
+        const char = text[i];
+        const prevChar = text[i - 1];
+        const nextChar = text[i + 1];
 
-    // State 1: Inside a multi-line comment
-    if (inMultiLineComment) {
-      if (char === '*' && nextChar === '/') {
-        inMultiLineComment = false;
-        i++; // Consume the '/'
-      }
-      continue;
+        // State 1: Inside a multi-line comment
+        if (inMultiLineComment) {
+            if (char === '*' && nextChar === '/') {
+                inMultiLineComment = false;
+                i++; // Consume the '/'
+            }
+            continue;
+        }
+
+        // State 2: Inside a string
+        if (inString) {
+            if (char === stringChar && prevChar !== '\\') {
+                inString = false;
+            }
+            secondToLastMeaningfulIndex = lastMeaningfulIndex;
+            lastMeaningfulIndex = i;
+            continue;
+        }
+
+        // State 3: Default state (not in a comment or string)
+        if (char === '/' && nextChar === '/') {
+            const newlineIndex = text.indexOf('\n', i);
+            if (newlineIndex === -1) {
+                break; // End of file is a comment
+            }
+            i = newlineIndex;
+            continue;
+        }
+
+        if (char === '/' && nextChar === '*') {
+            inMultiLineComment = true;
+            i++; // Consume the '*'
+            continue;
+        }
+
+        if (char === '"' || char === "'") {
+            inString = true;
+            stringChar = char;
+            secondToLastMeaningfulIndex = lastMeaningfulIndex;
+            lastMeaningfulIndex = i;
+            continue;
+        }
+
+        if (!/\s/.test(char)) {
+            secondToLastMeaningfulIndex = lastMeaningfulIndex;
+            lastMeaningfulIndex = i;
+        }
     }
 
-    // State 2: Inside a string
-    if (inString) {
-      if (char === stringChar && prevChar !== '\\') {
-        inString = false;
-      }
-      secondToLastMeaningfulIndex = lastMeaningfulIndex;
-      lastMeaningfulIndex = i;
-      continue;
+    // After parsing, check if we found a trailing comma.
+    if (lastMeaningfulIndex === -1) {
+        return text; // No meaningful characters found.
     }
 
-    // State 3: Default state (not in a comment or string)
-    if (char === '/' && nextChar === '/') {
-      const newlineIndex = text.indexOf('\n', i);
-      if (newlineIndex === -1) {
-        break; // End of file is a comment
-      }
-      i = newlineIndex;
-      continue;
+    const lastMeaningfulChar = text[lastMeaningfulIndex];
+
+    // Case 1: The very last meaningful character is a comma.
+    // e.g., { "a": 1, }
+    if (lastMeaningfulChar === ',') {
+        return text.slice(0, lastMeaningfulIndex) + text.slice(lastMeaningfulIndex + 1);
     }
 
-    if (char === '/' && nextChar === '*') {
-      inMultiLineComment = true;
-      i++; // Consume the '*'
-      continue;
+    // Case 2: The last character is a brace/bracket, and the one before it is a comma.
+    // e.g. { "a": 1, }
+    if ((lastMeaningfulChar === '}' || lastMeaningfulChar === ']') && secondToLastMeaningfulIndex !== -1) {
+        const secondToLastMeaningfulChar = text[secondToLastMeaningfulIndex];
+        if (secondToLastMeaningfulChar === ',') {
+            return text.slice(0, secondToLastMeaningfulIndex) + text.slice(secondToLastMeaningfulIndex + 1);
+        }
     }
 
-    if (char === '"' || char === "'") {
-      inString = true;
-      stringChar = char;
-      secondToLastMeaningfulIndex = lastMeaningfulIndex;
-      lastMeaningfulIndex = i;
-      continue;
-    }
-
-    if (!/\s/.test(char)) {
-      secondToLastMeaningfulIndex = lastMeaningfulIndex;
-      lastMeaningfulIndex = i;
-    }
-  }
-
-  // After parsing, check if we found a trailing comma.
-  if (lastMeaningfulIndex === -1) {
-    return text; // No meaningful characters found.
-  }
-
-  const lastMeaningfulChar = text[lastMeaningfulIndex];
-
-  // Case 1: The very last meaningful character is a comma.
-  // e.g., { "a": 1, }
-  if (lastMeaningfulChar === ',') {
-    return text.slice(0, lastMeaningfulIndex) + text.slice(lastMeaningfulIndex + 1);
-  }
-
-  // Case 2: The last character is a brace/bracket, and the one before it is a comma.
-  // e.g. { "a": 1, }
-  if ((lastMeaningfulChar === '}' || lastMeaningfulChar === ']') && secondToLastMeaningfulIndex !== -1) {
-    const secondToLastMeaningfulChar = text[secondToLastMeaningfulIndex];
-    if (secondToLastMeaningfulChar === ',') {
-      return text.slice(0, secondToLastMeaningfulIndex) + text.slice(secondToLastMeaningfulIndex + 1);
-    }
-  }
-
-  // If neither of the above conditions are met, there's no trailing comma to remove.
-  return text;
+    // If neither of the above conditions are met, there's no trailing comma to remove.
+    return text;
 }
 
 /**
@@ -628,74 +635,74 @@ function* iterateLines(text: string): Generator<[string, number]> {
  * @returns The zero-based index of the last meaningful character, or -1 if none is found.
  */
 function getLastMeaningfulCharacterIndex(text: string): number {
-  let lastMeaningfulIndex = -1;
-  let inMultiLineComment = false;
-  let inString = false;
-  let stringChar = ''; // Can be ' or "
+    let lastMeaningfulIndex = -1;
+    let inMultiLineComment = false;
+    let inString = false;
+    let stringChar = ''; // Can be ' or "
 
-  for (let i = 0; i < text.length; i++) {
-    const char = text[i];
-    const prevChar = text[i - 1];
-    const nextChar = text[i + 1];
+    for (let i = 0; i < text.length; i++) {
+        const char = text[i];
+        const prevChar = text[i - 1];
+        const nextChar = text[i + 1];
 
-    // State 1: Inside a multi-line comment
-    if (inMultiLineComment) {
-      if (char === '*' && nextChar === '/') {
-        inMultiLineComment = false;
-        i++; // Consume the '/' as well
-      }
-      continue;
+        // State 1: Inside a multi-line comment
+        if (inMultiLineComment) {
+            if (char === '*' && nextChar === '/') {
+                inMultiLineComment = false;
+                i++; // Consume the '/' as well
+            }
+            continue;
+        }
+
+        // State 2: Inside a string
+        if (inString) {
+            // Check for the closing quote, ensuring it's not escaped
+            if (char === stringChar && prevChar !== '\\') {
+                inString = false;
+            }
+            // All characters inside a string are considered meaningful for this function's purpose.
+            lastMeaningfulIndex = i;
+            continue;
+        }
+
+        // State 3: Default state (not in a comment or string)
+        // Check for the start of a single-line comment
+        if (char === '/' && nextChar === '/') {
+            // Find the next newline character
+            const newlineIndex = text.indexOf('\n', i);
+            if (newlineIndex === -1) {
+                // No more newlines, so the rest of the file is a comment.
+                // We can stop processing.
+                break;
+            }
+            // Jump execution to the newline character. The loop's i++ will move to the next line.
+            i = newlineIndex;
+            continue;
+        }
+
+        // Check for the start of a multi-line comment
+        if (char === '/' && nextChar === '*') {
+            inMultiLineComment = true;
+            i++; // Consume the '*' as well
+            continue;
+        }
+
+        // Check for the start of a string (handles both double and single quotes)
+        if (char === '"' || char === "'") {
+            inString = true;
+            stringChar = char;
+            lastMeaningfulIndex = i;
+            continue;
+        }
+
+        // If we've reached this point, we are in a "normal" code context.
+        // A character is meaningful if it's not whitespace.
+        if (!/\s/.test(char)) {
+            lastMeaningfulIndex = i;
+        }
     }
 
-    // State 2: Inside a string
-    if (inString) {
-      // Check for the closing quote, ensuring it's not escaped
-      if (char === stringChar && prevChar !== '\\') {
-        inString = false;
-      }
-      // All characters inside a string are considered meaningful for this function's purpose.
-      lastMeaningfulIndex = i;
-      continue;
-    }
-
-    // State 3: Default state (not in a comment or string)
-    // Check for the start of a single-line comment
-    if (char === '/' && nextChar === '/') {
-      // Find the next newline character
-      const newlineIndex = text.indexOf('\n', i);
-      if (newlineIndex === -1) {
-        // No more newlines, so the rest of the file is a comment.
-        // We can stop processing.
-        break;
-      }
-      // Jump execution to the newline character. The loop's i++ will move to the next line.
-      i = newlineIndex;
-      continue;
-    }
-
-    // Check for the start of a multi-line comment
-    if (char === '/' && nextChar === '*') {
-      inMultiLineComment = true;
-      i++; // Consume the '*' as well
-      continue;
-    }
-
-    // Check for the start of a string (handles both double and single quotes)
-    if (char === '"' || char === "'") {
-      inString = true;
-      stringChar = char;
-      lastMeaningfulIndex = i;
-      continue;
-    }
-
-    // If we've reached this point, we are in a "normal" code context.
-    // A character is meaningful if it's not whitespace.
-    if (!/\s/.test(char)) {
-      lastMeaningfulIndex = i;
-    }
-  }
-
-  return lastMeaningfulIndex;
+    return lastMeaningfulIndex;
 }
 
 /**
@@ -722,7 +729,7 @@ async function applyInheritedSettings(context: vscode.ExtensionContext): Promise
     if (totalInheritedSettings === 0) {
         return;
     }
-    
+
     // Add the inherited settings to the end of the profile:
     console.info(`Merging ${totalInheritedSettings} settings into \`${currentProfilePath}\`.`);
     await writeInheritedSettings(currentProfilePath, inheritedSettings);
