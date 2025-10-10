@@ -733,6 +733,56 @@ async function applyInheritedSettings(context: vscode.ExtensionContext): Promise
     // Add the inherited settings to the end of the profile:
     console.info(`Merging ${totalInheritedSettings} settings into \`${currentProfilePath}\`.`);
     await writeInheritedSettings(currentProfilePath, inheritedSettings);
+
+    const currentExtensionsPath = path.join(currentProfileDirectory, "extensions.json");
+    const currentExtensions = await readJSON(currentExtensionsPath) || [];
+
+    // Remove inherited extensions from the current profile, and convert to a map of id -> extension
+    // Inherited extensions have the field `inheritedFromProfile` in their `metadata` object.
+    const filteredExtensions = currentExtensions.filter((ext: any) => {
+        return !ext?.metadata?.inheritedFromProfile;
+    });
+    const extensionMap: Record<string, any> = {};
+    for (const ext of filteredExtensions) {
+        if (ext.id) {
+            extensionMap[ext.id] = ext;
+        }
+    }
+
+    // Get the list of parent profiles:
+    const config = vscode.workspace.getConfiguration("inheritProfile");
+    const parentProfiles = config.get<string[]>("parents", []);
+    console.info(`Collecting extensions from ${parentProfiles.length} parent profiles.`);
+
+    // Collect extensions from each of the parent profiles:
+    for (const profileName of parentProfiles) {
+        const profileDirectory = profiles[profileName];
+        if (!profileDirectory) {
+            console.warn(`Failed to collect extensions for profile ${profileName}: Profile does not exist.`);
+            continue;
+        }
+        const extensionsPath = path.join(profileDirectory, "extensions.json");
+        const profileExtensions = await readJSON(extensionsPath) || [];
+        console.info(`Found ${profileExtensions.length} extensions in \`${extensionsPath}\`.`);
+
+        for (const ext of profileExtensions) {
+            // Add extension if it does not already exist:
+            if (ext.id && !(ext.id in extensionMap)) {
+                // Mark the extension as inherited:
+                if (!ext.metadata) {
+                    ext.metadata = {};
+                }
+                ext.metadata.inheritedFromProfile = profileName;
+
+                extensionMap[ext.id] = ext;
+                console.info(`Inheriting extension \`${ext.id}\` from profile \`${profileName}\`.`);
+            }
+        }
+    }
+
+    const finalExtensions = Object.values(extensionMap);
+    console.info(`Writing ${finalExtensions.length} extensions to \`${currentExtensionsPath}\`.`);
+    await fs.writeFile(currentExtensionsPath, JSON.stringify(finalExtensions, null, 4) + "\n", "utf8");
 }
 
 /**
