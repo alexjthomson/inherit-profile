@@ -319,7 +319,14 @@ async function removeInheritedSettingsFromFile(settingsPath: string): Promise<vo
     console.info(`Removing inherited settings from \`${settingsPath}\`.`);
 
     // Find the start and end markers:
-    let raw = await readRawSettingsFile(settingsPath);
+    let raw = "";
+    try {
+        raw = await readRawSettingsFile(settingsPath);
+    } catch (error) {
+        console.error(`Failed to read settings file at \`${settingsPath}\`:`, error);
+        return;
+    }
+    
     const startIndex = raw.indexOf(INHERITED_SETTINGS_START_MARKER);
     const endIndex = raw.indexOf(INHERITED_SETTINGS_END_MARKER);
 
