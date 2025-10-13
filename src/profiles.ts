@@ -751,8 +751,8 @@ async function applyInheritedSettings(context: vscode.ExtensionContext): Promise
     });
     const extensionMap: Record<string, any> = {};
     for (const ext of filteredExtensions) {
-        if (ext.id) {
-            extensionMap[ext.id] = ext;
+        if (ext?.identifier?.id) {
+            extensionMap[ext.identifier.id] = ext;
         }
     }
 
@@ -770,19 +770,20 @@ async function applyInheritedSettings(context: vscode.ExtensionContext): Promise
         }
         const extensionsPath = path.join(profileDirectory, "extensions.json");
         const profileExtensions = await readJSON(extensionsPath) || [];
-        console.info(`Found ${profileExtensions.length} extensions in \`${extensionsPath}\`.`);
+        console.info(`Found ${profileExtensions.length} extensions in \`${profileName}\`.`);
 
         for (const ext of profileExtensions) {
             // Add extension if it does not already exist:
-            if (ext.id && !(ext.id in extensionMap)) {
+            const id = ext?.identifier?.id;
+            if (id && !(id in extensionMap)) {
                 // Mark the extension as inherited:
                 if (!ext.metadata) {
                     ext.metadata = {};
                 }
                 ext.metadata.inheritedFromProfile = profileName;
 
-                extensionMap[ext.id] = ext;
-                console.info(`Inheriting extension \`${ext.id}\` from profile \`${profileName}\`.`);
+                extensionMap[id] = ext;
+                console.info(`Inheriting extension \`${id}\` from profile \`${profileName}\`.`);
             }
         }
     }
