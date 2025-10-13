@@ -743,7 +743,21 @@ async function applyInheritedSettings(context: vscode.ExtensionContext): Promise
 
     const currentExtensionsPath = path.join(currentProfileDirectory, "extensions.json");
     const currentExtensions = await readJSON(currentExtensionsPath) || [];
+    // Collect and write inherited extensions
+    const finalExtensions = await collectInheritedExtensions(currentExtensions, profiles);
+    console.info(`Writing ${finalExtensions.length} extensions to \`${currentExtensionsPath}\`.`);
+    await fs.writeFile(currentExtensionsPath, JSON.stringify(finalExtensions, null, 4) + "\n", "utf8");
+}
 
+/**
+ * Collect extensions from parent profiles, merge with current profile extensions,
+ * and mark inherited extensions in their metadata.
+ *
+ * @param currentProfileDirectory The directory path for the current profile.
+ * @param currentExtensions The parsed extensions array from the current profile.
+ * @returns The final extensions array to write back to the current profile.
+ */
+async function collectInheritedExtensions(currentExtensions: any[], profiles: Record<string, string>): Promise<any[]> {
     // Remove inherited extensions from the current profile, and convert to a map of id -> extension
     // Inherited extensions have the field `inheritedFromProfile` in their `metadata` object.
     const filteredExtensions = currentExtensions.filter((ext: any) => {
@@ -788,9 +802,7 @@ async function applyInheritedSettings(context: vscode.ExtensionContext): Promise
         }
     }
 
-    const finalExtensions = Object.values(extensionMap);
-    console.info(`Writing ${finalExtensions.length} extensions to \`${currentExtensionsPath}\`.`);
-    await fs.writeFile(currentExtensionsPath, JSON.stringify(finalExtensions, null, 4) + "\n", "utf8");
+    return Object.values(extensionMap);
 }
 
 /**
@@ -819,6 +831,22 @@ export async function removeCurrentProfileInheritedSettings(context: vscode.Exte
     }
     const currentProfilePath = path.join(currentProfileDirectory, "settings.json");
     await removeInheritedSettingsFromFile(currentProfilePath);
+
+    // Also remove inherited extensions from the current profile's extensions.json
+    try {
+        const currentExtensionsPath = path.join(currentProfileDirectory, "extensions.json");
+        const currentExtensions = await readJSON(currentExtensionsPath) || [];
+        const filteredExtensions = currentExtensions.filter((ext: any) => {
+            return !ext?.metadata?.inheritedFromProfile;
+        });
+        // Only write if there was a change to avoid unnecessary fs writes
+        if (filteredExtensions.length !== currentExtensions.length) {
+            console.info(`Removing ${currentExtensions.length - filteredExtensions.length} inherited extensions from \`${currentExtensionsPath}\`.`);
+            await fs.writeFile(currentExtensionsPath, JSON.stringify(filteredExtensions, null, 4) + "\n", "utf8");
+        }
+    } catch (err) {
+        console.warn(`Failed to remove inherited extensions for profile \`${currentProfileName}\`:`, err);
+    }
 
     const config = vscode.workspace.getConfiguration("inheritProfile");
     if (config.get<boolean>("showMessages", true)) {
