@@ -296,25 +296,42 @@ async function getInheritedSettings(context: vscode.ExtensionContext): Promise<R
     return sortedInheritedSettings;
 }
 
-const INHERITED_SETTINGS_START_MARKER = "// --- INHERITED SETTINGS MARKER START --- //";
-const INHERITED_SETTINGS_END_MARKER = "// --- INHERITED SETTINGS MARKER END --- //";
+/**
+ * Gets the extensions that are missing from the current profile.
+ * @param context Extension context.
+ * @returns Returns the flattened extensions configs that are missing from the current profile.
+ */
+async function getInheritedExtensions(context: vscode.ExtensionContext): Promise<Record<string, string>> {
+    throw new Error('Not yet implemented');
+}
+
+/**
+ * Gets the MCP servers that are missing from the current profile.
+ * @param context Extension context.
+ * @returns Returns the flattened MCP server configs that are missing from the current profile.
+ */
+async function getInheritedMcpServers(context: vscode.ExtensionContext): Promise<Record<string, string>> {
+    throw new Error('Not yet implemented');
+}
+
+const INHERITED_CONFIG_START_MARKER = "// --- INHERITED SETTINGS MARKER START --- //";
+const INHERITED_CONFIG_END_MARKER = "// --- INHERITED SETTINGS MARKER END --- //";
 
 const WARNING_COMMENT = "// WARNING: Do not remove the inherited settings start and end markers.";
 const WARNING_EXPLAIN = "//          The markers are used to identify inserted inherited settings.";
 
 /**
- * Removes the inherited settings block (including the markers) from a settings
- * file.
+ * Removes the inherited config block (including the markers) from a JSON file.
  * 
  * If no markers are found, the file is left unchanged.
  */
-async function removeInheritedSettingsFromFile(settingsPath: string): Promise<void> {
-    console.info(`Removing inherited settings from \`${settingsPath}\`.`);
+async function removeInheritedConfigFromFile(configPath: string): Promise<void> {
+    console.info(`Removing inherited config from \`${configPath}\`.`);
 
     // Find the start and end markers:
-    let raw = await readRawSettingsFile(settingsPath);
-    const startIndex = raw.indexOf(INHERITED_SETTINGS_START_MARKER);
-    const endIndex = raw.indexOf(INHERITED_SETTINGS_END_MARKER);
+    let raw = await readRawConfigFile(configPath);
+    const startIndex = raw.indexOf(INHERITED_CONFIG_START_MARKER);
+    const endIndex = raw.indexOf(INHERITED_CONFIG_END_MARKER);
 
     // Ensure the markers exist:
     if (startIndex === -1 || endIndex === -1 || endIndex < startIndex) {
@@ -326,7 +343,7 @@ async function removeInheritedSettingsFromFile(settingsPath: string): Promise<vo
 
     // Clean response:
     const before = raw.slice(0, startIndex);
-    const after = raw.slice(endIndex + INHERITED_SETTINGS_END_MARKER.length);
+    const after = raw.slice(endIndex + INHERITED_CONFIG_END_MARKER.length);
     let cleaned = (before.trimEnd() + after.trimEnd());
 
     // Ensure JSONC ends properly:
@@ -336,7 +353,7 @@ async function removeInheritedSettingsFromFile(settingsPath: string): Promise<vo
     }
 
     // Write cleaned file:
-    await fs.writeFile(settingsPath, cleaned + "\n", "utf8");
+    await fs.writeFile(configPath, cleaned + "\n", "utf8");
 }
 
 /**
@@ -444,8 +461,8 @@ function removeTrailingComma(text: string): string {
  * IMPORTANT: This function assumes that there are no inherited settings in the
  * file. Any inherited settings should be removed before calling this function.
  */
-async function writeInheritedSettings(
-    settingsPath: string,
+async function writeInheritedConfig(
+    configPath: string,
     flattened: Record<string, any>
 ): Promise<void> {
     // Early exit if there is nothing to add:
@@ -455,26 +472,26 @@ async function writeInheritedSettings(
 
     // Read the raw file, split it by the closing brace, and get the tab size
     // for formatting:
-    const raw = await readRawSettingsFile(settingsPath);
-    const [beforeClose, afterClose] = await splitRawSettingsByClosingBrace(raw);
+    const raw = await readRawConfigFile(configPath);
+    const [beforeClose, afterClose] = await splitRawConfigByClosingBrace(raw);
     const tab = findTabValue(raw);
 
-    // Build the inherited settings block:
-    const block = buildInheritedSettingsBlock(flattened, tab);
+    // Build the inherited config block:
+    const block = buildInheritedConfigBlock(flattened, tab);
 
-    // Insert the inherited settings block between the before and after closing
+    // Insert the inherited config block between the before and after closing
     // brace blocks:
     const beforeClosePlusBlock = insertBeforeClose(beforeClose, block);
-    const finalSettings = beforeClosePlusBlock + afterClose;
+    const finalConfig = beforeClosePlusBlock + afterClose;
 
     // Write the final settings to the settings path:
-    await fs.writeFile(settingsPath, finalSettings, "utf8");
+    await fs.writeFile(configPath, finalConfig, "utf8");
 }
 
 /**
- * Reads and returns a raw `settings.json` file.
+ * Reads and returns a raw `json` file from profile
  */
-async function readRawSettingsFile(settingsPath: string): Promise<string> {
+async function readRawConfigFile(settingsPath: string): Promise<string> {
     // Read the raw file:
     // NOTE: This will throw an exception if the file cannot be read.
     return await fs.readFile(settingsPath, "utf8");
@@ -485,10 +502,10 @@ async function readRawSettingsFile(settingsPath: string): Promise<string> {
  * 1. The content before the closing brace (excluding the closing brace).
  * 2. The content after and including the closing brace.
  * 
- * @param raw Raw `settings.json` file.
+ * @param raw Raw `json` file in profile
  * @returns Returns `raw` in two parts: before, and after the closing brace.
  */
-function splitRawSettingsByClosingBrace(raw: string): [beforeClose: string, afterClose: string] {
+function splitRawConfigByClosingBrace(raw: string): [beforeClose: string, afterClose: string] {
     // Split the file by the closing brace:
     let closingIndex = raw.lastIndexOf("}");
     if (closingIndex === -1) {
@@ -533,13 +550,13 @@ function findTabValue(raw: string): string {
 }
 
 /**
- * Builds the inherited settings block with start, warning, entries, and end.
+ * Builds the inherited config block with start, warning, entries, and end.
  * 
- * @param flattened Flattened settings to insert into the settings block.
+ * @param flattened Flattened config values to insert into the config block.
  * @param tab Tab sequence to use.
- * @returns Returns the raw inherited settings block.
+ * @returns Returns the raw inherited config block.
  */
-function buildInheritedSettingsBlock(
+function buildInheritedConfigBlock(
     flattened: Record<string, string>,
     tab: string,
 ): string {
@@ -548,11 +565,11 @@ function buildInheritedSettingsBlock(
         .join(",\n");
 
     return (
-        tab + INHERITED_SETTINGS_START_MARKER + "\n" +
+        tab + INHERITED_CONFIG_START_MARKER + "\n" +
         tab + WARNING_COMMENT + "\n" +
         tab + WARNING_EXPLAIN + "\n" +
         entries + (entries ? "\n" : "") +
-        tab + INHERITED_SETTINGS_END_MARKER + "\n"
+        tab + INHERITED_CONFIG_END_MARKER + "\n"
     );
 }
 
@@ -699,6 +716,14 @@ function getLastMeaningfulCharacterIndex(text: string): number {
 }
 
 /**
+ * Typeguard for FS errors
+ * @param err Error 
+ */
+function isFileNotFound(err: unknown): err is NodeJS.ErrnoException {
+    return err instanceof Error && (err as NodeJS.ErrnoException).code === 'ENOENT';
+}
+
+/**
  * Applies the inherited settings to the current profile.
  * @param context Extension context.
  */
@@ -710,22 +735,46 @@ async function applyInheritedSettings(context: vscode.ExtensionContext): Promise
     if (!currentProfileDirectory) {
         console.error(`Unable to find current profile directory for \`${currentProfileName}\` profile.`);
     }
-    const currentProfilePath = path.join(currentProfileDirectory, "settings.json");
+    const configs = [{
+        type: 'Settings',
+        path: path.join(currentProfileDirectory, "settings.json"),
+        handler: getInheritedSettings,
+    }, {
+        type: 'Extensions',
+        path: path.join(currentProfileDirectory, "extensions.json"),
+        handler: getInheritedExtensions,
+    }, {
+        type: 'MCP servers',
+        path: path.join(currentProfileDirectory, "mcp.json"),
+        handler: getInheritedMcpServers,
+    }];
 
-    // Remove the inherited settings from the current profile:
-    removeInheritedSettingsFromFile(currentProfilePath);
+    await Promise.all(
+        configs.map(async ({ type, path, handler }) => {
+            try {
+                // Remove the inherited config from the current profile:
+                removeInheritedConfigFromFile(path);
 
-    // Get the settings that the current profile should inherit:
-    const inheritedSettings = await getInheritedSettings(context);
-    const totalInheritedSettings = Object.keys(inheritedSettings).length;
-    console.info(`Found ${totalInheritedSettings} inherited settings for \`${currentProfileName}\` profile.`);
-    if (totalInheritedSettings === 0) {
-        return;
-    }
-    
-    // Add the inherited settings to the end of the profile:
-    console.info(`Merging ${totalInheritedSettings} settings into \`${currentProfilePath}\`.`);
-    await writeInheritedSettings(currentProfilePath, inheritedSettings);
+                // Get the config that the current profile should inherit:
+                const inheritedConfig = await handler(context);
+                const totalInheritedConfigs = Object.keys(inheritedConfig).length;
+                console.info(`Found ${totalInheritedConfigs} inherited ${type} config for \`${currentProfileName}\` profile.`);
+                if (totalInheritedConfigs === 0) {
+                    return;
+                }
+
+                // Add the inherited config to the end of the profile:
+                console.info(`Merging ${totalInheritedConfigs} ${type} into \`${path}\`.`);
+                await writeInheritedConfig(path, inheritedConfig);
+            } catch (err: unknown) {
+                if (isFileNotFound(err)) {
+                    console.info(`No inheritable ${type} config for \`${currentProfileName}\` profile.`);
+                } else {
+                    throw err;
+                }
+            }
+        })
+    );
 }
 
 /**
@@ -753,7 +802,7 @@ export async function removeCurrentProfileInheritedSettings(context: vscode.Exte
         console.error(`Unable to find current profile directory for \`${currentProfileName}\` profile.`);
     }
     const currentProfilePath = path.join(currentProfileDirectory, "settings.json");
-    await removeInheritedSettingsFromFile(currentProfilePath);
+    await removeInheritedConfigFromFile(currentProfilePath);
 
     const config = vscode.workspace.getConfiguration("inheritProfile");
     if (config.get<boolean>("showMessages", true)) {
