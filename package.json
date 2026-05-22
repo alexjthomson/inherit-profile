@@ -83,6 +83,11 @@
           "type": "boolean",
           "default": false,
           "description": "Shows a message when settings are inherited or removed."
+        },
+        "inheritProfile._insertionBoundary": {
+          "type": "boolean",
+          "default": false,
+          "description": "Internal setting used to keep new settings outside the inherited block."
         }
       }
     }

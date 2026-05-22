@@ -199,6 +199,34 @@ async function getProfileMap(
 }
 
 /**
+ * Gets the current profile name, directory, and full profile map.
+ * @param context Extension context.
+ * @returns Returns details about the current profile.
+ */
+async function getCurrentProfileDetails(
+  context: vscode.ExtensionContext,
+): Promise<{
+  currentProfileName: string;
+  currentProfileDirectory: string;
+  profiles: Record<string, string>;
+}> {
+  const currentProfileName = await getCurrentProfileName(context);
+  const profiles = await getProfileMap(context);
+  const currentProfileDirectory = profiles[currentProfileName];
+  if (!currentProfileDirectory) {
+    throw new Error(
+      `Unable to find current profile directory for \`${currentProfileName}\` profile.`,
+    );
+  }
+
+  return {
+    currentProfileName,
+    currentProfileDirectory,
+    profiles,
+  };
+}
+
+/**
  * Recursively flattens settings into a single record that maps the setting key
  * to its value.
  * @param settings Settings to flatten.
@@ -269,7 +297,9 @@ async function getProfileSettings(
     const settingsPath = path.join(profilePath, "settings.json");
     // TODO: We could also collect extensions here
 
-    const profileSettings = flattenSettings(await readJSON(settingsPath));
+    const profileSettings = stripManagedProfileSettings(
+      flattenSettings(await readJSON(settingsPath)),
+    );
     console.debug(
       `Found ${Object.keys(profileSettings).length} settings from \`${settingsPath}\`.`,
     );
@@ -278,7 +308,7 @@ async function getProfileSettings(
       `Merged ${settingsPath} into collected settings. Current total settings ${Object.keys(settings).length}.`,
     );
   }
-  return flattenSettings(settings);
+  return stripManagedProfileSettings(settings);
 }
 
 /**
@@ -369,11 +399,37 @@ const INHERITED_SETTINGS_START_MARKER =
   "// --- INHERITED SETTINGS MARKER START --- //";
 const INHERITED_SETTINGS_END_MARKER =
   "// --- INHERITED SETTINGS MARKER END --- //";
+const INHERITED_SETTINGS_INSERTION_BOUNDARY_KEY =
+  "inheritProfile._insertionBoundary";
+const INHERITED_SETTINGS_INSERTION_BOUNDARY_VALUE = false;
 
 const WARNING_COMMENT =
   "// WARNING: Do not remove the inherited settings start and end markers.";
 const WARNING_EXPLAIN =
   "//          The markers are used to identify inserted inherited settings.";
+
+function stripManagedProfileSettings<T>(
+  settings: Record<string, T>,
+): Record<string, T> {
+  const strippedSettings = { ...settings };
+  delete strippedSettings[INHERITED_SETTINGS_INSERTION_BOUNDARY_KEY];
+  return strippedSettings;
+}
+
+function removeInsertionBoundarySetting(after: string): string {
+  const boundaryIndex = after.indexOf(
+    `"${INHERITED_SETTINGS_INSERTION_BOUNDARY_KEY}"`,
+  );
+  if (boundaryIndex === -1) {
+    return after;
+  }
+
+  const lineStart = after.lastIndexOf("\n", boundaryIndex);
+  const start = lineStart === -1 ? 0 : lineStart + 1;
+  const lineEnd = after.indexOf("\n", boundaryIndex);
+  const end = lineEnd === -1 ? after.length : lineEnd + 1;
+  return after.slice(0, start) + after.slice(end);
+}
 
 /**
  * Removes the inherited settings block (including the markers) from a settings
@@ -413,7 +469,9 @@ async function removeInheritedSettingsFromFile(
 
   // Clean response:
   const before = raw.slice(0, startIndex);
-  const after = raw.slice(endIndex + INHERITED_SETTINGS_END_MARKER.length);
+  const after = removeInsertionBoundarySetting(
+    raw.slice(endIndex + INHERITED_SETTINGS_END_MARKER.length),
+  );
   let cleaned = before.trimEnd() + after.trimEnd();
 
   // Ensure JSONC ends properly:
@@ -570,9 +628,14 @@ async function writeInheritedSettings(
  * Reads and returns a raw `settings.json` file.
  */
 async function readRawSettingsFile(settingsPath: string): Promise<string> {
-  // Read the raw file:
-  // NOTE: This will throw an exception if the file cannot be read.
-  return await fs.readFile(settingsPath, "utf8");
+  try {
+    return await fs.readFile(settingsPath, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return "{\n}\n";
+    }
+    throw error;
+  }
 }
 
 /**
@@ -643,6 +706,8 @@ function buildInheritedSettingsBlock(
   const entries = Object.entries(flattened)
     .map(([key, value]) => `${tab}"${key}": ${JSON.stringify(value)}`)
     .join(",\n");
+  const insertionBoundaryEntry =
+    `${tab}"${INHERITED_SETTINGS_INSERTION_BOUNDARY_KEY}": ${JSON.stringify(INHERITED_SETTINGS_INSERTION_BOUNDARY_VALUE)}`;
 
   return (
     tab +
@@ -655,9 +720,11 @@ function buildInheritedSettingsBlock(
     WARNING_EXPLAIN +
     "\n" +
     entries +
-    (entries ? "\n" : "") +
+    (entries ? ",\n" : "") +
     tab +
     INHERITED_SETTINGS_END_MARKER +
+    "\n" +
+    insertionBoundaryEntry +
     "\n"
   );
 }
@@ -808,15 +875,8 @@ function getLastMeaningfulCharacterIndex(text: string): number {
 async function applyInheritedSettings(
   context: vscode.ExtensionContext,
 ): Promise<void> {
-  // Get the path to the current profile settings:
-  const currentProfileName = await getCurrentProfileName(context);
-  const profiles = await getProfileMap(context);
-  const currentProfileDirectory = profiles[currentProfileName];
-  if (!currentProfileDirectory) {
-    console.error(
-      `Unable to find current profile directory for \`${currentProfileName}\` profile.`,
-    );
-  }
+  const { currentProfileName, currentProfileDirectory, profiles } =
+    await getCurrentProfileDetails(context);
   const currentProfilePath = path.join(
     currentProfileDirectory,
     "settings.json",
@@ -831,15 +891,12 @@ async function applyInheritedSettings(
   console.info(
     `Found ${totalInheritedSettings} inherited settings for \`${currentProfileName}\` profile.`,
   );
-  if (totalInheritedSettings === 0) {
-    return;
+  if (totalInheritedSettings > 0) {
+    console.info(
+      `Merging ${totalInheritedSettings} settings into \`${currentProfilePath}\`.`,
+    );
+    await writeInheritedSettings(currentProfilePath, inheritedSettings);
   }
-
-  // Add the inherited settings to the end of the profile:
-  console.info(
-    `Merging ${totalInheritedSettings} settings into \`${currentProfilePath}\`.`,
-  );
-  await writeInheritedSettings(currentProfilePath, inheritedSettings);
 
   const currentExtensionsPath = path.join(
     currentProfileDirectory,
@@ -854,14 +911,16 @@ async function applyInheritedSettings(
     currentExtensions,
     profiles,
   );
-  console.info(
-    `Writing ${finalExtensions.length} extensions to \`${currentExtensionsPath}\`.`,
-  );
-  await fs.writeFile(
-    currentExtensionsPath,
-    JSON.stringify(finalExtensions, null, 4) + "\n",
-    "utf8",
-  );
+  if (JSON.stringify(finalExtensions) !== JSON.stringify(currentExtensions)) {
+    console.info(
+      `Writing ${finalExtensions.length} extensions to \`${currentExtensionsPath}\`.`,
+    );
+    await fs.writeFile(
+      currentExtensionsPath,
+      JSON.stringify(finalExtensions, null, 4) + "\n",
+      "utf8",
+    );
+  }
 }
 
 /**
@@ -956,14 +1015,8 @@ export async function updateCurrentProfileInheritance(
 export async function removeCurrentProfileInheritedSettings(
   context: vscode.ExtensionContext,
 ): Promise<void> {
-  const currentProfileName = await getCurrentProfileName(context);
-  const profiles = await getProfileMap(context);
-  const currentProfileDirectory = profiles[currentProfileName];
-  if (!currentProfileDirectory) {
-    console.error(
-      `Unable to find current profile directory for \`${currentProfileName}\` profile.`,
-    );
-  }
+  const { currentProfileName, currentProfileDirectory } =
+    await getCurrentProfileDetails(context);
   const currentProfilePath = path.join(
     currentProfileDirectory,
     "settings.json",
@@ -976,7 +1029,10 @@ export async function removeCurrentProfileInheritedSettings(
       currentProfileDirectory,
       "extensions.json",
     );
-    const currentExtensions = (await readJSON(currentExtensionsPath)) || [];
+    const parsedCurrentExtensions = await readJSON(currentExtensionsPath);
+    const currentExtensions = Array.isArray(parsedCurrentExtensions)
+      ? parsedCurrentExtensions
+      : [];
     const filteredExtensions = currentExtensions.filter((ext: any) => {
       return !ext?.metadata?.inheritedFromProfile;
     });
@@ -1001,7 +1057,7 @@ export async function removeCurrentProfileInheritedSettings(
   const config = vscode.workspace.getConfiguration("inheritProfile");
   if (config.get<boolean>("showMessages", true)) {
     vscode.window.showInformationMessage(
-      "Inherited settings remove from current profile!",
+      "Inherited settings removed from current profile!",
     );
   }
 }
