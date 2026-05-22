@@ -132,9 +132,13 @@ async function getCurrentProfileName(context: vscode.ExtensionContext): Promise<
     
     const workspaceUri: vscode.Uri | undefined = vscode.workspace.workspaceFile || vscode.workspace.workspaceFolders?.at(0)?.uri;
     if (workspaceUri) {
-        const profileId = storage.profileAssociations.workspaces[workspaceUri.toString()];
-        const profile = findByKeyValuePair(storage.userDataProfiles, "location", profileId);
-        return profile?.name || "Default";
+        const workspaceKey = workspaceUri.toString();
+        const workspaceAssociations = storage.profileAssociations?.workspaces;
+        if (workspaceAssociations && Object.prototype.hasOwnProperty.call(workspaceAssociations, workspaceKey)) {
+            const profileId = workspaceAssociations[workspaceKey];
+            const profile = findByKeyValuePair(storage.userDataProfiles, "location", profileId);
+            return profile?.name || "Default";
+        }
     }
     return "Default";
 }
