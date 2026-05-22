@@ -98,8 +98,8 @@
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src",
-    "test": "vscode-test",
-    "unit-test": "mocha -r ts-node/register src/test/**/*.test.ts"
+    "test": "vscode-test --config ./vscode-test.config.mjs",
+    "unit-test": "npm run compile && mocha --ui tdd \"out/test/unit/**/*.test.js\""
   },
   "devDependencies": {
     "@types/node": "22.x",
