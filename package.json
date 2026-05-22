@@ -43,7 +43,7 @@
   ],
   "main": "./out/extension.js",
   "extensionKind": [
-    "workspace"
+    "ui"
   ],
   "contributes": {
     "commands": [
