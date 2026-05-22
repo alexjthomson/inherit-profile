@@ -47,7 +47,7 @@ __Inheritance Priority__: This extension respects the settings you declare in yo
 ---
 
 ## 💡 How Does This Extension Work?
-This extension allows you to inherit from multiple other profiles. In order to apply settings, you must include them in either the global, workspace, workspace file, or profile settings file. This extension places inherited settings directly into the profile `settings.json`.
+This extension allows you to inherit from multiple other profiles. In order to apply settings, you must include them in either the global, workspace, workspace file, or profile settings file. This extension places inherited settings directly into the profile `settings.json`, and it also merges inherited extensions into the profile `extensions.json`.
 
 ### 1: Collecting the Inherited Settings
 First, the extension will read the settings for each of the profiles you have elected to inherit from. It will then flatten each of the settings keys into a single string key and store it alongside it's value. As the extension iterates through the different `settings.json` files from each inherited profile, it will override any existing settings with new ones. This is done according to the order that the profiles appear in in the `inheritProfile.parents` setting.
@@ -107,11 +107,12 @@ The final inherited settings are then inserted into the current profile between 
         "hello": "something"
     },
     // --- INHERITED SETTINGS MARKER START --- //
-    "two": "some other value"
+    "two": "some other value",
     // --- INHERITED SETTINGS MARKER END --- //
+    "inheritProfile._insertionBoundary": false
 }
 ```
-> __Note__: It is important that the start and end markers are left alone. These are used by the extension to identify the settings that have been inherited to the current profile.
+> __Note__: It is important that the start and end markers and the `inheritProfile._insertionBoundary` setting are left alone. The extension uses them to identify the inherited settings block, and the dummy setting keeps newly added settings outside the protected section.
 
 ---
 
@@ -122,7 +123,7 @@ The final inherited settings are then inserted into the current profile between 
 - [x] Implement formatting for inherited settings (indentation).
 - [x] Add a warning comment inside the inherited settings.
 - [ ] Tidy up [`profiles.ts`](src/profiles.ts).
-- [ ] Implement extension inheritance. This should be disabled by default, but
-  should be possible to enable through configuration.
+- [x] Implement extension inheritance.
+- [ ] Add a configuration option to disable extension inheritance.
 - [ ] Implement unit testing.
 - [ ] Implement proper CI with auto-release.
