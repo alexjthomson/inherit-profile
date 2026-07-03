@@ -179,6 +179,27 @@ async function getCurrentProfileName(
       return profile?.name || "Default";
     }
   }
+
+  // Fallback for empty windows (no workspace/folder open):
+  // In VS Code 1.127+, the profile menu structure is no longer in storage.json.
+  // Use the current window's backup folder ID to look up the profile association.
+  const lastActiveWindow = storage.windowsState?.lastActiveWindow;
+  if (lastActiveWindow?.backupPath) {
+    const backupFolderId = path.basename(lastActiveWindow.backupPath);
+    const emptyWindows = storage.profileAssociations?.emptyWindows;
+    if (emptyWindows && Object.prototype.hasOwnProperty.call(emptyWindows, backupFolderId)) {
+      const profileId = emptyWindows[backupFolderId];
+      const profile = findByKeyValuePair(
+        storage.userDataProfiles,
+        "location",
+        profileId,
+      );
+      if (profile?.name) {
+        return profile.name;
+      }
+    }
+  }
+
   return "Default";
 }
 
