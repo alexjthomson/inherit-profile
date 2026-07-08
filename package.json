@@ -1,13 +1,13 @@
 {
   "name": "inherit-profile",
-  "version": "0.6.0",
-  "displayName": "Inherit Profile",
-  "description": "Profile inheritance for VS Code.",
+  "version": "0.7.0",
+  "displayName": "Inherit Profile (Community Fork)",
+  "description": "Profile inheritance for VS Code. Community fork with VS Code 1.127+ fixes.",
   "icon": "branding/icon_128.png",
-  "publisher": "alexthomson",
+  "publisher": "luotianyiismywife",
   "repository": {
     "type": "git",
-    "url": "https://github.com/alexjthomson/inherit-profile"
+    "url": "https://github.com/luotianyiismywife/inherit-profile"
   },
   "license": "MIT",
   "engines": {
@@ -30,9 +30,9 @@
     "configs",
     "workspace"
   ],
-  "homepage": "https://github.com/alexjthomson/inherit-profile#readme",
+  "homepage": "https://github.com/luotianyiismywife/inherit-profile#readme",
   "bugs": {
-    "url": "https://github.com/alexjthomson/inherit-profile/issues"
+    "url": "https://github.com/luotianyiismywife/inherit-profile/issues"
   },
   "galleryBanner": {
     "color": "#1e1e1e",
