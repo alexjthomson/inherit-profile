@@ -1,3 +1,64 @@
+/**
+ * =============================================================================
+ * inherit-profile-plus — Profile 继承核心逻辑
+ * =============================================================================
+ *
+ * 用途（Purpose）:
+ *   实现 VS Code Profile 之间的设置（settings.json）和扩展（extensions.json）
+ *   继承逻辑。子 Profile 可以声明一个或多个父 Profile，自动继承其配置。
+ *
+ * 工作机制（How it works）:
+ *   1. 通过读取 VS Code 全局存储 storage.json 获取 Profile 列表和当前 Profile
+ *   2. 获取当前 Profile 的 `inheritProfile.parents` 配置，确定父 Profile
+ *   3. 设置继承：
+ *      a. 读取父 Profile 和子 Profile 的 settings.json
+ *      b. 用 subtractSettings() 剔除子中已有的 key（子覆盖父）
+ *      c. 将缺失的父设置写入 inherited 标记块（带起始/结束标记）
+ *   4. 扩展继承：
+ *      a. 读取父 Profile 的 extensions.json
+ *      b. 用 collectInheritedExtensions() 合并父扩展到子
+ *      c. 从父继承的扩展会被标记 metadata.inheritedFromProfile
+ *      d. 子已显式声明的扩展不会被覆盖（子覆盖父）
+ *      e. 父删除扩展后，子中标记了 inheritedFromProfile 的对应扩展会被自动清理
+ *
+ * 依赖关系（Dependencies）:
+ *   - import { ... } from "./profileSettings"
+ *     → 使用其 JSONC 操作工具函数（flatten/merge/subtract/build block 等）
+ *   - vscode 模块 → 用于获取配置、显示消息等
+ *   - fs/promises + path → 读写文件
+ *   - jsonc-parser → 解析带注释的 JSON 文件
+ *
+ * 对外提供的 API（Exports）:
+ *   - readJSON(filePath)                                        读取 JSONC 文件
+ *   - updateCurrentProfileInheritance(context)                   **主要入口**：完整继承同步
+ *   - removeCurrentProfileInheritedSettings(context)             清除当前 Profile 的继承内容
+ *   - updateInheritedSettingsOnProfileChange(context)            监听 Profile 切换
+ *
+ * 内部函数（Internal）:
+ *   - getUserDirectory(context)                                  获取用户目录
+ *   - getGlobalStoragePath(context)                              获取 storage.json 路径
+ *   - readGlobalStorage(context)                                 读取全局存储
+ *   - getCustomProfiles(context)                                 获取自定义 Profile 列表
+ *   - findByKeyValuePair(input, key, value)                      在嵌套对象中递归搜索
+ *   - getCurrentProfileName(context)                             获取当前 Profile 名称
+ *   - getProfileMap(context)                                     Profile 名称→目录 映射
+ *   - getCurrentProfileDetails(context)                          当前 Profile 详细信息
+ *   - getProfileSettings(context, profiles)                      收集指定 Profile 的设置
+ *   - getCurrentProfileSettings(context)                         当前 Profile 自身设置
+ *   - getInheritedSettings(context)                              计算应继承的设置（父-子）
+ *   - removeInheritedSettingsFromFile(settingsPath)              从文件移除 inherited 块
+ *   - writeInheritedSettings(settingsPath, flattened)            写入 inherited 设置块
+ *   - readRawSettingsFile(settingsPath)                          读取原始 settings.json
+ *   - applyInheritedSettings(context)                            执行继承（设置+扩展）
+ *   - collectInheritedExtensions(currentExtensions, profiles)    合并父扩展（标记继承来源）
+ *
+ * 配置项（Config keys under "inheritProfile"）:
+ *   - parents: string[] — 父 Profile 名称列表（如 ["Base"]）
+ *   - runOnStartup: boolean — 启动时自动同步
+ *   - runOnProfileChange: boolean — 切换 Profile 时自动同步
+ *   - showMessages: boolean — 是否显示通知消息
+ */
+
 import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs/promises";

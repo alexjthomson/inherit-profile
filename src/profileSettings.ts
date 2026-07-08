@@ -1,5 +1,70 @@
 import * as path from "path";
 
+/**
+ * =============================================================================
+ * inherit-profile-plus — JSONC 操作工具函数
+ * =============================================================================
+ *
+ * 用途（Purpose）:
+ *   纯工具/辅助函数模块。提供 JSONC（JSON with Comments）文件的各种操作函数，
+ *   专为 VS Code settings.json 格式设计。不直接操作 Profile 或继承逻辑，
+ *   只处理字符串和对象的转换。
+ *
+ * 工作机制（How it works）:
+ *   所有函数都是纯函数（无副作用）或纯工具函数。主要功能：
+ *
+ *   1. 设置对象操作：
+ *      - flattenSettings() — 将嵌套 settings 拍平（如 {editor:{fontSize:14}} → {"editor.fontSize":14}）
+ *      - mergeFlattenedSettings() — 合并两个拍平后的设置对象（后者覆盖前者）
+ *      - subtractSettings() — 返回 base 中不在 toRemove 里的项
+ *      - sortSettings() — 按 key 字母序排序
+ *
+ *   2. 标记常量：
+ *      - INHERITED_SETTINGS_START_MARKER / END_MARKER
+ *        → 标记 inherited 块在 settings.json 中的起止位置
+ *      - INHERITED_SETTINGS_INSERTION_BOUNDARY_KEY
+ *        → 用于定位插入位置的内部门牌设置
+ *
+ *   3. 字符串/文件操作：
+ *      - buildInheritedSettingsBlock() — 构建 inherited 设置块（含标记）
+ *      - splitRawSettingsByClosingBrace() — 按最后一个 } 切开 JSON
+ *      - insertBeforeClose() — 在关闭括号前插入内容
+ *      - removeTrailingComma() — 移除 JSON 末尾多余逗号（支持注释和字符串）
+ *      - removeInsertionBoundarySetting() — 移除内部门牌设置行
+ *      - stripManagedProfileSettings() — 从对象中移除内部标记 key
+ *      - findTabValue() — 检测 JSONC 文件的缩进风格（空格/制表符）
+ *
+ * 依赖关系（Dependencies）:
+ *   无外部依赖，纯 TypeScript 实现
+ *
+ * 被谁使用（Used by）:
+ *   src/profiles.ts — 所有继承逻辑都依赖此模块
+ *
+ * 导出列表（Exports）:
+ *   --- 常量 ---
+ *   - INHERITED_SETTINGS_START_MARKER                 inherited 块起始标记
+ *   - INHERITED_SETTINGS_END_MARKER                   inherited 块结束标记
+ *   - INHERITED_SETTINGS_INSERTION_BOUNDARY_KEY       内部门牌设置 key
+ *   - INHERITED_SETTINGS_INSERTION_BOUNDARY_VALUE     内部门牌设置 value
+ *   - WARNING_COMMENT                                 继承块警告注释
+ *   - WARNING_EXPLAIN                                 继承块说明注释
+ *
+ *   --- 设置对象操作 ---
+ *   - flattenSettings(settings, parentKey?, result?)  嵌套设置拍平
+ *   - mergeFlattenedSettings(target, source)           合并两个拍平设置（source 优先）
+ *   - subtractSettings(base, toRemove)                返回 base 中不在 toRemove 里的项
+ *   - sortSettings(settings)                          按 key 字母序排序
+ *   - stripManagedProfileSettings(settings)           移除内部标记 key
+ *
+ *   --- JSONC 字符串操作 ---
+ *   - removeInsertionBoundarySetting(after)           从字符串中移除内部门牌行
+ *   - removeTrailingComma(text)                       移除末尾多余的逗号
+ *   - splitRawSettingsByClosingBrace(raw)             按最后一个 } 切分为两部分
+ *   - findTabValue(raw)                               检测缩进风格（空格/制表符）
+ *   - buildInheritedSettingsBlock(flattened, tab)     构建完整的 inherited 设置块
+ *   - insertBeforeClose(beforeClose, block)           在关闭括号前插入内容
+ */
+
 export const INHERITED_SETTINGS_START_MARKER =
   "// --- INHERITED SETTINGS MARKER START --- //";
 export const INHERITED_SETTINGS_END_MARKER =

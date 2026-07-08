@@ -1,15 +1,15 @@
 # VS Code Profile 体系 · 完整架构文档
 
-> 最后更新: 2026-07-08
+> 最后更新: 2026-07-09
 
 ---
 
 ## 一、整体架构
 
 ```
-Base（通用底座·20个）
-├── Base->Dev（通用开发工具·56个）
-└── Base->Writing（文字写作·20个，自动继承 Base）
+Base（通用底座·15个）
+├── Base->Dev（通用开发工具·52个）
+└── Base->Writing（文字写作·15个，自动继承 Base）
 
 Test（未归类文档工具，3个，仅文档规划）
 ```
@@ -18,7 +18,7 @@ Test（未归类文档工具，3个，仅文档规划）
 
 ## 二、Profile 明细
 
-### 2.1 Base · 通用底座（20 个扩展）
+### 2.1 Base · 通用底座（15 个扩展）
 
 **UUID:** `10a9f58d`
 
@@ -65,7 +65,7 @@ Test（未归类文档工具，3个，仅文档规划）
 
 ---
 
-### 2.2 Base->Dev · 通用开发（56 个扩展，含继承自 Base）
+### 2.2 Base->Dev · 通用开发（52 个扩展，含继承自 Base）
 
 **UUID:** `-367578e4`
 
@@ -130,7 +130,7 @@ Test（未归类文档工具，3个，仅文档规划）
 | `gitlab.gitlab-workflow`                 | GitLab Workflow            | GitLab 集成       |
 | `ms-dotnettools.vscode-dotnet-runtime`   | .NET Runtime               | .NET 运行时       |
 
-### 2.4 Base->Writing · 文字写作（20 个扩展，含继承自 Base，由 inherit-profile-plus 自动管理）
+### 2.4 Base->Writing · 文字写作（15 个扩展，含继承自 Base，由 inherit-profile-plus 自动管理）
 
 **UUID:** `-332dce57`
 
@@ -151,13 +151,13 @@ Test（未归类文档工具，3个，仅文档规划）
 
 **扩展列表:**
 
-与 **Base** 完全一致（20 个），由 `inherit-profile-plus` 在启动/切 Profile 时自动同步。无需手动维护。
+与 **Base** 完全一致（15 个），由 `inherit-profile-plus` 在启动/切 Profile 时自动同步。无需手动维护。
 
 ---
 
 ---
 
-### 2.5 Default Profile（56 个扩展 · 全局存储）
+### 2.5 Default Profile（57 个扩展 · 全局存储）
 
 **UUID:** `__default__profile__`（特殊，无独立目录）
 
@@ -180,7 +180,7 @@ Test（未归类文档工具，3个，仅文档规划）
 }
 ```
 
-**扩展列表（56 个）** — 全局安装，所有 Profile 可见，但各 Profile 的 `extensions.json` 决定哪些启用。
+**扩展列表（57 个）** — 全局安装，所有 Profile 可见，但各 Profile 的 `extensions.json` 决定哪些启用。
 
 | 类别          | 扩展                                                                                                                                                                                                                                 |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -219,9 +219,9 @@ Test（未归类文档工具，3个，仅文档规划）
 
 ```mermaid
 graph TB
-    Base["Base (20个)"]
-    Dev["Base->Dev (56个)<br/>prettier, errorlens, dependi<br/>+Python, Go, Java, 前端<br/>+lldb, xml, shell, debug<br/>+PowerShell, Rust, .NET, GitLab"]
-    Writing["Base->Writing (20个)<br/>自动继承 Base"]
+    Base["Base (15个)"]
+    Dev["Base->Dev (52个)<br/>prettier, errorlens, dependi<br/>+Python, Go, Java, 前端<br/>+lldb, xml, shell, debug<br/>+PowerShell, Rust, .NET, GitLab"]
+    Writing["Base->Writing (15个)<br/>自动继承 Base"]
 
     Base -->|inherit| Dev
     Base -->|inherit| Writing
@@ -411,3 +411,4 @@ $newDev | ConvertTo-Json -Depth 10 -Compress | Set-Content $devPath -Encoding UT
 - 🔄 如果扩展现已在 Base->Dev 中（通过继承可见），**不需要**在 Dev 的 `extensions.json` 中重复添加——除非你想让 Dev 在断开继承时仍保留该扩展
 - 📦 扩展本身是全局安装的（`%USERPROFILE%\.vscode\extensions\`），Profile 的 `extensions.json` 只是"引用清单"，增删引用**不会**影响扩展文件本身
 - 🔁 VS Code 会缓存 Profile 信息，改动 `extensions.json` 后建议重启 VS Code 或切换 Profile 使其生效
+- ⚡ **`inherit-profile-plus` 扩展继承机制**：子 Profile 中来自父 Profile 的扩展会被标记 `inheritedFromProfile`。同步时，先移除所有带标记的扩展，再从父 Profile 重新收集。因此父 Profile **增删扩展会自动同步到子 Profile**。子自己独有的扩展不受影响。
