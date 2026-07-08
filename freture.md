@@ -83,30 +83,42 @@ Writing Profile
 
 ### Phase 3：级联同步（父→子推送）
 
-**目标：** 修改父 Profile 后，所有子 Profile 自动同步更新。
+**目标：** 修改父 Profile 后，所有子 Profile 同步更新。
 
-**方案：监听父 Profile 的 extensions.json/settings.json 变化**
+**设计原则：** 保持与现有机制一致——不引入文件监听，仅在切换 Profile 和加载插件时触发。
+
+**方案：** 在 `updateInheritedSettingsOnProfileChange()` 中扩展：
 
 ```
-在 updateInheritedSettingsOnProfileChange() 中增强：
+当前行为：
+  切到子 Profile → 子从父拉取继承（单向"拉"）
 
-1. 扫描所有 Profile 的 settings.json
-2. 找出哪些 Profile 的 inheritProfile.parents 包含当前修改的 Profile
-3. 遍历这些子 Profile，依次调用 applyInheritedSettings()
+增强后行为：
+  切到父 Profile → 父同步完后，自动找到所有子 Profile，依次推送更新（"拉"+"推"）
+  切到子 Profile → 保持不变，子从父拉取继承
 ```
 
 **伪代码：**
 
 ```typescript
-async function cascadeSyncToChildren(context, changedProfileName) {
+async function updateCurrentProfileInheritance(context) {
+  // 1. 先同步当前 Profile 自身的继承
+  await applyInheritedSettings(context);
+  
+  // 2. 再查找继承了当前 Profile 的子 Profile，级联推送
+  await cascadeSyncToChildren(context, currentProfileName);
+}
+
+async function cascadeSyncToChildren(context, parentProfileName) {
   const allProfiles = await getProfileMap(context);
   
   for (const [profileName, profileDir] of Object.entries(allProfiles)) {
+    if (profileName === parentProfileName) continue; // 跳过自己
     const settingsPath = path.join(profileDir, "settings.json");
     const settings = await readJSON(settingsPath);
     const parents = settings?.inheritProfile?.parents ?? [];
     
-    if (parents.includes(changedProfileName)) {
+    if (parents.includes(parentProfileName)) {
       // 触发子 Profile 的继承同步
       await applyInheritedSettingsForProfile(context, profileName, profileDir);
     }
@@ -114,13 +126,15 @@ async function cascadeSyncToChildren(context, changedProfileName) {
 }
 ```
 
-**触发时机：**
+**触发时机（沿用现有机制）：**
 
-| 方式 | 说明 |
+| 时机 | 说明 |
 |------|------|
-| 监听父 Profile 文件变化 | 用 `FileSystemWatcher` 监听配置文件变更 |
-| 继承同步完成后级联 | 当前 Profile 同步完后，自动触发其子 Profile 的同步 |
-| 手动命令 | 提供 "Sync inheritance for all profiles" 命令 |
+| VS Code 启动 | `runOnStartup` 配置控制 |
+| 切换 Profile | `runOnProfileChange` 搭配 `storage.json` 文件变化检测（已有实现） |
+| 手动命令 | "Apply Inheritance to Current Profile"（已有命令） |
+
+> ✅ 无需额外文件监听，全复用已有基础设施。
 
 ### Phase 4：设置合并迁移——从 "subtract" 到 "显式合并块"
 
@@ -171,4 +185,4 @@ async function cascadeSyncToChildren(context, changedProfileName) {
 2. **文件写入节流**：批量修改时避免频繁写盘
 3. **用户通知**：后台同步完成后通知用户变更情况
 4. **出错不回退**：某个子 Profile 同步失败不应影响其他子 Profile
-- 目前 `inherit-profile-plus` 的行为是单向追加（新增同步，删除不同步），后续需改为完整的继承合并模型
+
