@@ -7,9 +7,9 @@
 ## 一、整体架构
 
 ```
-Base（通用底座·21个）
+Base（通用底座·20个）
 ├── Base->Dev（通用开发工具·56个）
-└── Base->Writing（文字写作·21个，自动继承 Base）
+└── Base->Writing（文字写作·20个，自动继承 Base）
 
 Test（未归类文档工具，3个，仅文档规划）
 ```
@@ -18,7 +18,7 @@ Test（未归类文档工具，3个，仅文档规划）
 
 ## 二、Profile 明细
 
-### 2.1 Base · 通用底座（21 个扩展）
+### 2.1 Base · 通用底座（20 个扩展）
 
 **UUID:** `10a9f58d`
 
@@ -45,9 +45,6 @@ Test（未归类文档工具，3个，仅文档规划）
 
 | 扩展 ID                                   | 名称                 | 用途                  |
 | ----------------------------------------- | -------------------- | --------------------- |
-| `ms-vscode-remote.remote-ssh`             | Remote - SSH         | SSH 远程连接          |
-| `ms-vscode.remote-explorer`               | Remote Explorer      | 远程资源管理器        |
-| `ms-vscode-remote.remote-ssh-edit`        | Remote SSH: Edit     | SSH Config 编辑       |
 | `eamodio.gitlens`                         | GitLens              | Git 增强              |
 | `github.codespaces`                       | GitHub Codespaces    | 云端开发              |
 | `github.vscode-pull-request-github`       | GitHub Pull Requests | PR 管理               |
@@ -65,7 +62,6 @@ Test（未归类文档工具，3个，仅文档规划）
 | `mushan.vscode-paste-image`               | Paste Image          | 粘贴图片              |
 | `davidanson.vscode-markdownlint`          | markdownlint         | Markdown 规范检查     |
 | `shd101wyy.markdown-preview-enhanced`     | Markdown Preview Enhanced | Markdown 增强预览 |
-| `maxdavidwow.remix-light`                 | Remix Light          | 浅色主题              |
 
 ---
 
@@ -95,6 +91,9 @@ Test（未归类文档工具，3个，仅文档规划）
 
 | 扩展 ID                                  | 名称                       | 用途              |
 | ---------------------------------------- | -------------------------- | ----------------- |
+| `ms-vscode-remote.remote-ssh`            | Remote - SSH               | SSH 远程连接      |
+| `ms-vscode.remote-explorer`              | Remote Explorer            | 远程资源管理器    |
+| `ms-vscode-remote.remote-ssh-edit`       | Remote SSH: Edit           | SSH Config 编辑   |
 | `esbenp.prettier-vscode`                 | Prettier                   | 跨语言格式化      |
 | `usernamehw.errorlens`                   | Error Lens                 | 内联错误提示      |
 | `fill-labs.dependi`                      | Dependi                    | 跨语言依赖管理    |
@@ -131,7 +130,7 @@ Test（未归类文档工具，3个，仅文档规划）
 | `gitlab.gitlab-workflow`                 | GitLab Workflow            | GitLab 集成       |
 | `ms-dotnettools.vscode-dotnet-runtime`   | .NET Runtime               | .NET 运行时       |
 
-### 2.4 Base->Writing · 文字写作（21 个扩展，含继承自 Base，由 inherit-profile-plus 自动管理）
+### 2.4 Base->Writing · 文字写作（20 个扩展，含继承自 Base，由 inherit-profile-plus 自动管理）
 
 **UUID:** `-332dce57`
 
@@ -152,13 +151,13 @@ Test（未归类文档工具，3个，仅文档规划）
 
 **扩展列表:**
 
-与 **Base** 完全一致（21 个），由 `inherit-profile-plus` 在启动/切 Profile 时自动同步。无需手动维护。
+与 **Base** 完全一致（20 个），由 `inherit-profile-plus` 在启动/切 Profile 时自动同步。无需手动维护。
 
 ---
 
 ---
 
-### 2.5 Default Profile（57 个扩展 · 全局存储）
+### 2.5 Default Profile（56 个扩展 · 全局存储）
 
 **UUID:** `__default__profile__`（特殊，无独立目录）
 
@@ -181,13 +180,13 @@ Test（未归类文档工具，3个，仅文档规划）
 }
 ```
 
-**扩展列表（57 个）** — 全局安装，所有 Profile 可见，但各 Profile 的 `extensions.json` 决定哪些启用。
+**扩展列表（56 个）** — 全局安装，所有 Profile 可见，但各 Profile 的 `extensions.json` 决定哪些启用。
 
 | 类别          | 扩展                                                                                                                                                                                                                                 |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | 🔀 Git        | `eamodio.gitlens`, `github.codespaces`, `github.vscode-pull-request-github`                                                                                                                                                          |
 | 🌏 汉化       | `ms-ceintl.vscode-language-pack-zh-hans`                                                                                                                                                                                             |
-| 🎨 美化       | `vscode-icons-team.vscode-icons`, `maxdavidwow.remix-light`                                                                                                                                                                          |
+| 🎨 美化       | `vscode-icons-team.vscode-icons`                                                                                                                                                                          |
 | 🔌 远程       | `ms-vscode-remote.remote-ssh`, `ms-vscode.remote-explorer`, `ms-vscode-remote.remote-ssh-edit`                                                                                                                                       |
 | 📝 Markdown   | `yzhang.markdown-all-in-one`, `shd101wyy.markdown-preview-enhanced`, `davidanson.vscode-markdownlint`                                                                                                                                |
 | 🖼️ 工具       | `kisstkondoros.vscode-gutter-preview`, `mushan.vscode-paste-image`                                                                                                                                                                   |
@@ -220,9 +219,9 @@ Test（未归类文档工具，3个，仅文档规划）
 
 ```mermaid
 graph TB
-    Base["Base (21个)"]
+    Base["Base (20个)"]
     Dev["Base->Dev (56个)<br/>prettier, errorlens, dependi<br/>+Python, Go, Java, 前端<br/>+lldb, xml, shell, debug<br/>+PowerShell, Rust, .NET, GitLab"]
-    Writing["Base->Writing (21个)<br/>自动继承 Base"]
+    Writing["Base->Writing (20个)<br/>自动继承 Base"]
 
     Base -->|inherit| Dev
     Base -->|inherit| Writing
@@ -250,3 +249,165 @@ graph TB
 2. **扩展文件在全局**（`extensions/`），Profile 的 `extensions.json` 只是"引用清单"
 3. **`inherit-profile-plus` 扩展** 需要在子 Profile 中也安装才能工作
 4. **Profile 名称中的 `->`** 只是命名约定，无实际语义
+
+---
+
+## 七、修改本地扩展的工作流程
+
+> **核心理念：** 一个扩展的改动需要同步 **两处**——本 Markdown 文档 + 实际 Profile 的 `extensions.json` 文件。
+
+### 7.1 常见场景
+
+| 场景 | 说明 |
+|------|------|
+| **新增扩展** | 安装后加入指定 Profile 的扩展清单 |
+| **移除扩展** | 从某 Profile 取消勾选（卸载则全局移除） |
+| **跨 Profile 移动** | 从 A Profile 移到 B Profile（如 Base → Dev） |
+
+### 7.2 修改步骤
+
+#### 步骤一：更新本 Markdown 文档
+
+找到文档中对应的 Profile 表格，执行以下操作：
+
+- **新增**：在表格末尾追加一行 `\| <扩展ID> \| <名称> \| <用途> \|`
+- **删除**：移除该扩展所在的行
+- **移动**：从源 Profile 表格删除，在目标 Profile 表格中添加
+
+同时更新以下受影响的计数值：
+
+| 位置 | 需同步 |
+|------|--------|
+| 一、整体架构（Base/Dev/Writing 个数） | Base/Writing 增减时更新 |
+| 各 Profile 标题括号内的个数 | 对应 Profile 增减时更新 |
+| Base->Writing 说明文字中的个数 | Base 增减时同步更新 |
+| Default Profile 标题与描述中的个数 | 全局扩展总数变化时更新 |
+| 三、Mermaid 继承关系图 | Base/Writing 个数变化时更新 |
+
+#### 步骤二：更新本地 Profile 文件
+
+找到对应 Profile 目录下的 `extensions.json`：
+
+```
+%APPDATA%\Code\User\profiles\<UUID>\extensions.json
+```
+
+| Profile | UUID 目录 |
+|---------|-----------|
+| Base | `10a9f58d` |
+| Base->Dev | `-367578e4` |
+| Base->Writing | `-332dce57` |
+
+**JSON 结构说明：**
+
+```json
+{
+  "identifier": {
+    "id": "publisher.extension-name",
+    "uuid": "全局唯一标识"
+  },
+  "version": "x.y.z",
+  "location": { "$mid": 1, "path": "扩展安装路径", "scheme": "file" },
+  "relativeLocation": "publisher.extension-name-x.y.z",
+  "metadata": {
+    "installedTimestamp": 时间戳,
+    "pinned": false,
+    "source": "gallery",
+    "id": "uuid",
+    "publisherId": "uuid",
+    "publisherDisplayName": "发布者",
+    "targetPlatform": "undefined",
+    "updated": false,
+    "private": false,
+    "isPreReleaseVersion": false,
+    "hasPreReleaseVersion": false,
+    "preRelease": false
+  }
+}
+```
+
+操作方式（任选其一）：
+
+<details>
+<summary><b>方式 A：使用 PowerShell 脚本（推荐，精确可靠）</b></summary>
+
+```powershell
+# 读取
+$profilePath = "$env:APPDATA\Code\User\profiles\<UUID>\extensions.json"
+$ext = Get-Content $profilePath -Raw | ConvertFrom-Json
+
+# 新增：先在 VS Code 安装扩展，再从全局已安装清单中找到其完整对象
+# 查看全局清单：%USERPROFILE%\.vscode\extensions\extensions.json
+$globalExt = Get-Content "$env:USERPROFILE\.vscode\extensions\extensions.json" -Raw | ConvertFrom-Json
+$newExt = $globalExt | Where-Object { $_.identifier.id -eq "publisher.extension-name" }
+$ext = $ext + $newExt   # 追加到末尾
+
+# 删除：按 identifier.id 过滤排除
+$ext = $ext | Where-Object { $_.identifier.id -ne "publisher.extension-name" }
+
+# 写出（-Compress 保持单行紧凑格式）
+$ext | ConvertTo-Json -Depth 10 -Compress | Set-Content $profilePath -Encoding UTF8
+```
+</details>
+
+<details>
+<summary><b>方式 B：手动编辑（少量修改时可用）</b></summary>
+
+1. 在 VS Code 中打开 `%APPDATA%\Code\User\profiles\<UUID>\extensions.json`
+2. 按 JSON 格式增删对应的扩展对象（注意数组逗号）
+3. 保存文件
+</details>
+
+#### 步骤三：验证
+
+```powershell
+# 检查某扩展是否存在于 Profile 中
+Select-String -Path "$env:APPDATA\Code\User\profiles\10a9f58d\extensions.json" -Pattern "extension-name" -SimpleMatch
+
+# 统计 Profile 扩展数量
+(Get-Content "$env:APPDATA\Code\User\profiles\10a9f58d\extensions.json" -Raw | ConvertFrom-Json).Count
+```
+
+### 7.3 典型操作示例
+
+#### 例：新增一个扩展到 Dev
+
+```powershell
+$devPath = "$env:APPDATA\Code\User\profiles\-367578e4\extensions.json"
+$devExt = Get-Content $devPath -Raw | ConvertFrom-Json
+
+# 从全局已安装清单中找到目标扩展
+$globalExt = Get-Content "$env:USERPROFILE\.vscode\extensions\extensions.json" -Raw | ConvertFrom-Json
+$newExt = $globalExt | Where-Object { $_.identifier.id -eq "publisher.new-extension" }
+
+# 追加并写出
+$devExt = $devExt + $newExt
+$devExt | ConvertTo-Json -Depth 10 -Compress | Set-Content $devPath -Encoding UTF8
+```
+
+#### 例：跨 Profile 移动（如 Base → Dev）
+
+```powershell
+$basePath = "$env:APPDATA\Code\User\profiles\10a9f58d\extensions.json"
+$devPath = "$env:APPDATA\Code\User\profiles\-367578e4\extensions.json"
+
+$baseExt = Get-Content $basePath -Raw | ConvertFrom-Json
+$devExt = Get-Content $devPath -Raw | ConvertFrom-Json
+
+$targetIds = @("publisher.ext-a", "publisher.ext-b")
+
+# 从 Base 取出，追加到 Dev
+$moving = $baseExt | Where-Object { $_.identifier.id -in $targetIds }
+$newBase = $baseExt | Where-Object { $_.identifier.id -notin $targetIds }
+$newDev = $moving + $devExt   # 插入到 Dev 列表开头
+
+$newBase | ConvertTo-Json -Depth 10 -Compress | Set-Content $basePath -Encoding UTF8
+$newDev | ConvertTo-Json -Depth 10 -Compress | Set-Content $devPath -Encoding UTF8
+```
+
+### 7.4 注意事项
+
+- ⚠️ **一定要两处都改**（文档 + Profile 文件），否则文档与实际不同步
+- 🔄 如果扩展现已在 Base->Dev 中（通过继承可见），**不需要**在 Dev 的 `extensions.json` 中重复添加——除非你想让 Dev 在断开继承时仍保留该扩展
+- 📦 扩展本身是全局安装的（`%USERPROFILE%\.vscode\extensions\`），Profile 的 `extensions.json` 只是"引用清单"，增删引用**不会**影响扩展文件本身
+- 🔁 VS Code 会缓存 Profile 信息，改动 `extensions.json` 后建议重启 VS Code 或切换 Profile 使其生效
