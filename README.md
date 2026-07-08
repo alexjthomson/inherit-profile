@@ -1,6 +1,14 @@
 <p align="center"><img width="25%" src="branding/icon_1024.png"/><img src="branding/name.png"/></p>
 <h3 align="center">Enables profile inheritance in VisualStudio Code!</h3>
-<h4 align="center"><a href="https://marketplace.visualstudio.com/items?itemName=alexthomson.inherit-profile" target="_blank">View in Marketplace</a></h3>
+<h4 align="center"><a href="https://marketplace.visualstudio.com/items?itemName=luotianyiismywife.inherit-profile-plus" target="_blank">View in Marketplace</a></h3>
+
+> **ℹ️ This is a community-maintained fork** with VS Code 1.127+ compatibility fixes.
+> [Original repo](https://github.com/alexjthomson/inherit-profile) by alexjthomson.
+>
+> **Extension ID:** `luotianyiismywife.inherit-profile-plus`
+>
+> **Install directly in VS Code:** Search for `Inherit Profile Plus` in the Extensions panel.
+
 <hr>
 
 ## ⚙️ Configuration

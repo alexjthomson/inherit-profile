@@ -1,7 +1,7 @@
 {
-  "name": "inherit-profile",
+  "name": "inherit-profile-plus",
   "version": "0.7.0",
-  "displayName": "Inherit Profile (Community Fork)",
+  "displayName": "Inherit Profile Plus",
   "description": "Profile inheritance for VS Code. Community fork with VS Code 1.127+ fixes.",
   "icon": "branding/icon_128.png",
   "publisher": "luotianyiismywife",
