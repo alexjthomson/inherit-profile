@@ -125,7 +125,7 @@
     "@vscode/test-electron": "^3.0.0",
     "eslint": "^9.32.0",
     "ts-node": "^10.9.2",
-    "typescript": "^5.9.2"
+    "typescript": "^7.0.2"
   },
   "dependencies": {
     "jsonc-parser": "^3.3.1"
