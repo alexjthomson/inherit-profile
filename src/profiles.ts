@@ -187,7 +187,10 @@ async function getCurrentProfileName(
   if (lastActiveWindow?.backupPath) {
     const backupFolderId = path.basename(lastActiveWindow.backupPath);
     const emptyWindows = storage.profileAssociations?.emptyWindows;
-    if (emptyWindows && Object.prototype.hasOwnProperty.call(emptyWindows, backupFolderId)) {
+    if (
+      emptyWindows &&
+      Object.prototype.hasOwnProperty.call(emptyWindows, backupFolderId)
+    ) {
       const profileId = emptyWindows[backupFolderId];
       const profile = findByKeyValuePair(
         storage.userDataProfiles,
