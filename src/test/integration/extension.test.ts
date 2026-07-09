@@ -11,11 +11,13 @@ import {
   INHERITED_SETTINGS_START_MARKER,
 } from "../../profileSettings";
 import {
-  registerCurrentProfileSaveWatcher,
-  registerParentProfileSaveWatcher,
   removeCurrentProfileInheritedSettings,
   updateCurrentProfileInheritance,
 } from "../../profiles";
+import {
+  registerCurrentProfileSaveWatcher,
+  registerParentProfileSaveWatcher,
+} from "../../profileWatchers";
 
 type ProfileDescriptor = {
   name: string;

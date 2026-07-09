@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
-import { updateCurrentProfileInheritance, removeCurrentProfileInheritedSettings, updateInheritedSettingsOnProfileChange, registerCurrentProfileSaveWatcher, registerParentProfileSaveWatcher } from "./profiles";
+import { updateCurrentProfileInheritance, removeCurrentProfileInheritedSettings } from "./profiles";
+import { updateInheritedSettingsOnProfileChange, registerCurrentProfileSaveWatcher, registerParentProfileSaveWatcher } from "./profileWatchers";
 
 export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(

@@ -155,7 +155,7 @@ The final inherited settings are then inserted into the current profile between 
 - [x] Insert inherited settings alphabetically.
 - [x] Implement formatting for inherited settings (indentation).
 - [x] Add a warning comment inside the inherited settings.
-- [ ] Tidy up [`profiles.ts`](src/profiles.ts).
+- [x] Tidy up [`profiles.ts`](src/profiles.ts).
 - [x] Implement extension inheritance.
 - [x] Add a configuration option to disable extension inheritance.
 - [x] Implement unit testing.
