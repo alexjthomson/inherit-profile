@@ -79,6 +79,21 @@
           "default": true,
           "description": "Updates the inherited settings when the current profile is changed."
         },
+        "inheritProfile.runOnCurrentProfileSave": {
+          "type": "boolean",
+          "default": true,
+          "description": "Updates the inherited settings when the current profile's settings.json is saved."
+        },
+        "inheritProfile.runOnParentProfileSave": {
+          "type": "boolean",
+          "default": true,
+          "description": "Updates the inherited settings when one of the parent profiles' settings.json is saved."
+        },
+        "inheritProfile.inheritExtensions": {
+          "type": "boolean",
+          "default": true,
+          "description": "Inherits extensions from parent profiles. Disable to only inherit settings."
+        },
         "inheritProfile.showMessages": {
           "type": "boolean",
           "default": false,
