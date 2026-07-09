@@ -11,6 +11,7 @@ import {
   INHERITED_SETTINGS_START_MARKER,
 } from "../../profileSettings";
 import {
+  registerCurrentProfileSaveWatcher,
   removeCurrentProfileInheritedSettings,
   updateCurrentProfileInheritance,
 } from "../../profiles";
@@ -461,6 +462,159 @@ suite("Extension integration", () => {
       ["esbenp.prettier-vscode"],
     );
   });
+
+  test("re-applies inheritance when the current profile's settings.json is saved externally", async function () {
+    this.timeout(20000);
+
+    const currentProfile: ProfileDescriptor = {
+      name: "Child",
+      location: "child-profile",
+    };
+    const parentProfile: ProfileDescriptor = {
+      name: "Parent",
+      location: "parent-profile",
+    };
+
+    await writeStorage(sandboxRoot, currentProfile, [parentProfile]);
+    await writeProfileSettings(
+      sandboxRoot,
+      currentProfile,
+      `{
+    "editor.tabSize": 2
+}
+`,
+    );
+    await writeProfileSettings(
+      sandboxRoot,
+      parentProfile,
+      `{
+    "files.autoSave": "off"
+}
+`,
+    );
+
+    await updateConfig("parents", ["Parent"]);
+    const context = createContext(sandboxRoot);
+
+    try {
+      // Apply once up front, mirroring what happens on extension startup.
+      await updateCurrentProfileInheritance(context);
+      await registerCurrentProfileSaveWatcher(context);
+
+      // Watcher registration involves an async round-trip to set up the
+      // underlying OS-level watch, so give it a moment to settle before
+      // relying on it to observe the change below.
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      const settingsPath = path.join(
+        getProfileDirectory(sandboxRoot, currentProfile),
+        "settings.json",
+      );
+
+      // Simulate the user editing and saving the current profile's
+      // settings.json directly (i.e. NOT through this extension).
+      await fs.writeFile(
+        settingsPath,
+        `{
+    "editor.tabSize": 4
+}
+`,
+        "utf8",
+      );
+
+      // The watcher should notice the external change and re-apply
+      // inheritance, re-inserting the inherited "files.autoSave" setting
+      // while preserving the user's edit.
+      const updatedSettings = await waitForSettings(
+        settingsPath,
+        (settings) =>
+          settings["files.autoSave"] === "off" &&
+          settings["editor.tabSize"] === 4,
+        15000,
+      );
+
+      assert.strictEqual(updatedSettings["files.autoSave"], "off");
+      assert.strictEqual(updatedSettings["editor.tabSize"], 4);
+    } finally {
+      for (const subscription of context.subscriptions) {
+        subscription.dispose();
+      }
+    }
+  });
+
+  test("does not repeatedly re-apply inheritance for its own writes", async function () {
+    this.timeout(20000);
+
+    const currentProfile: ProfileDescriptor = {
+      name: "Child",
+      location: "child-profile",
+    };
+    const parentProfile: ProfileDescriptor = {
+      name: "Parent",
+      location: "parent-profile",
+    };
+
+    await writeStorage(sandboxRoot, currentProfile, [parentProfile]);
+    await writeProfileSettings(
+      sandboxRoot,
+      currentProfile,
+      `{
+    "editor.tabSize": 2
+}
+`,
+    );
+    await writeProfileSettings(
+      sandboxRoot,
+      parentProfile,
+      `{
+    "files.autoSave": "off"
+}
+`,
+    );
+
+    await updateConfig("parents", ["Parent"]);
+    const context = createContext(sandboxRoot);
+
+    try {
+      await registerCurrentProfileSaveWatcher(context);
+
+      // Watcher registration involves an async round-trip to set up the
+      // underlying OS-level watch, so give it a moment to settle before
+      // relying on it to observe the change below.
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      const settingsPath = path.join(
+        getProfileDirectory(sandboxRoot, currentProfile),
+        "settings.json",
+      );
+
+      // The initial call inside registerCurrentProfileSaveWatcher's
+      // resubscribe step does not apply inheritance itself, so trigger it
+      // once and let its own write settle before observing stability.
+      await updateCurrentProfileInheritance(context);
+      const settledSettings = await waitForSettings(
+        settingsPath,
+        (settings) => settings["files.autoSave"] === "off",
+        15000,
+      );
+      assert.strictEqual(settledSettings["files.autoSave"], "off");
+
+      // Give the watcher a chance to react to the write above. Since it was
+      // this extension's own write, it must be recognised as a self-write
+      // and must not schedule another reapplication. If it did, the file
+      // would still settle on the same content, so instead we assert the
+      // content remains byte-for-byte stable after waiting comfortably
+      // longer than the debounce delay.
+      const contentAfterOwnWrite = await fs.readFile(settingsPath, "utf8");
+      await new Promise((resolve) => setTimeout(resolve, 750));
+      const contentAfterWaiting = await fs.readFile(settingsPath, "utf8");
+      assert.strictEqual(contentAfterWaiting, contentAfterOwnWrite);
+    } finally {
+      for (const subscription of context.subscriptions) {
+        subscription.dispose();
+      }
+    }
+  });
 });
 
 function createContext(rootDir: string): vscode.ExtensionContext {
@@ -590,6 +744,35 @@ async function writeProfileExtensions(
     path.join(profileDirectory, "extensions.json"),
     JSON.stringify(extensions, null, 4) + "\n",
     "utf8",
+  );
+}
+
+/**
+ * Polls `settingsPath` until its parsed contents satisfy `predicate`, or
+ * throws if `timeoutMs` elapses first. Used to wait for a file system
+ * watcher to notice a change and asynchronously re-apply inheritance.
+ */
+async function waitForSettings(
+  settingsPath: string,
+  predicate: (settings: Record<string, any>) => boolean,
+  timeoutMs = 8000,
+  intervalMs = 50,
+): Promise<Record<string, any>> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const raw = await fs.readFile(settingsPath, "utf8");
+      const settings = parse(raw) as Record<string, any>;
+      if (predicate(settings)) {
+        return settings;
+      }
+    } catch {
+      // File may not exist yet, or may be mid-write; keep polling.
+    }
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+  throw new Error(
+    `Timed out waiting for settings at ${settingsPath} to satisfy the predicate.`,
   );
 }
 

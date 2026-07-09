@@ -46,6 +46,7 @@ extension starts.
         "parents": ["Default"],
         "runOnStartup": true,
         "runOnProfileChange": true,
+        "runOnCurrentProfileSave": true,
         "inheritExtensions": true,
         "showMessages": false
     }
@@ -53,6 +54,8 @@ extension starts.
 ```
 
 > **Note**: Set `inheritExtensions` to `false` if you only want to inherit settings and not extensions from your parent profiles.
+
+> **Note**: Set `runOnCurrentProfileSave` to `false` if you don't want inheritance to be re-applied automatically whenever you edit and save the current profile's `settings.json`.
 
 ---
 
@@ -144,7 +147,7 @@ The final inherited settings are then inserted into the current profile between 
 
 ## 🎯 Future Plans
 
-- [ ] Update the profile inheritance when the current profile is saved. This should have a configuration entry for it.
+- [x] Update the profile inheritance when the current profile is saved. This should have a configuration entry for it.
 - [ ] Update the profile inheritance when one of the parent profiles is saved. This should have a configuration entry for it.
 - [x] Insert inherited settings alphabetically.
 - [x] Implement formatting for inherited settings (indentation).

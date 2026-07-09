@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { updateCurrentProfileInheritance, removeCurrentProfileInheritedSettings, updateInheritedSettingsOnProfileChange } from "./profiles";
+import { updateCurrentProfileInheritance, removeCurrentProfileInheritedSettings, updateInheritedSettingsOnProfileChange, registerCurrentProfileSaveWatcher } from "./profiles";
 
 export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
@@ -22,6 +22,11 @@ export async function activate(context: vscode.ExtensionContext) {
     // Apply on profile change:
     if (config.get<boolean>("runOnProfileChange", true)) {
         await updateInheritedSettingsOnProfileChange(context);
+    }
+
+    // Apply when the current profile's settings are saved:
+    if (config.get<boolean>("runOnCurrentProfileSave", true)) {
+        await registerCurrentProfileSaveWatcher(context);
     }
 }
 

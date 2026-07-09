@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs/promises";
 import { parse } from "jsonc-parser";
+import { createDebouncedTrigger } from "./debounce";
 import {
   buildInheritedSettingsBlock,
   findTabValue,
@@ -19,6 +20,48 @@ import {
   stripManagedProfileSettings,
   subtractSettings,
 } from "./profileSettings";
+import { SelfWriteTracker } from "./selfWriteTracker";
+
+/**
+ * Tracks content written to profile files by this extension so that file
+ * watchers reacting to those same files can tell the difference between our
+ * own writes and genuine external edits.
+ */
+const selfWriteTracker = new SelfWriteTracker();
+
+/**
+ * Writes `content` to `filePath` and records it with {@link selfWriteTracker}
+ * so that file watchers set up to react to external edits of this file (see
+ * {@link registerCurrentProfileSaveWatcher}) can recognise and ignore the
+ * change this write is about to cause.
+ */
+async function writeManagedFile(
+  filePath: string,
+  content: string,
+): Promise<void> {
+  selfWriteTracker.record(filePath, content);
+  await fs.writeFile(filePath, content, "utf8");
+}
+
+/**
+ * Creates a {@link vscode.FileSystemWatcher} that watches a single file at an
+ * absolute path.
+ *
+ * `vscode.workspace.createFileSystemWatcher` does not reliably report
+ * changes for a plain absolute path string when that path lies outside of
+ * every open workspace folder — which is always true for profile files,
+ * since they live under VS Code's global storage/user directory rather than
+ * a workspace. Using an explicit {@link vscode.RelativePattern} with the
+ * file's parent directory as its base avoids this problem.
+ * @param filePath Absolute path to the file to watch.
+ */
+function createFileWatcher(filePath: string): vscode.FileSystemWatcher {
+  const pattern = new vscode.RelativePattern(
+    path.dirname(filePath),
+    path.basename(filePath),
+  );
+  return vscode.workspace.createFileSystemWatcher(pattern);
+}
 
 /**
  * Reads JSONC (JSON with comments).
@@ -410,7 +453,7 @@ async function removeInheritedSettingsFromFile(
   }
 
   // Write cleaned file:
-  await fs.writeFile(settingsPath, cleaned + "\n", "utf8");
+  await writeManagedFile(settingsPath, cleaned + "\n");
 }
 
 /**
@@ -443,7 +486,7 @@ async function writeInheritedSettings(
   const finalSettings = beforeClosePlusBlock + afterClose;
 
   // Write the final settings to the settings path:
-  await fs.writeFile(settingsPath, finalSettings, "utf8");
+  await writeManagedFile(settingsPath, finalSettings);
 }
 
 /**
@@ -652,7 +695,7 @@ export async function updateInheritedSettingsOnProfileChange(
   const globalStoragePath = getGlobalStoragePath(context);
   let currentProfile = await getCurrentProfileName(context);
 
-  const watcher = vscode.workspace.createFileSystemWatcher(globalStoragePath);
+  const watcher = createFileWatcher(globalStoragePath);
   const onChange = async () => {
     const newProfileName = await getCurrentProfileName(context);
     if (newProfileName !== currentProfile) {
@@ -668,4 +711,69 @@ export async function updateInheritedSettingsOnProfileChange(
   watcher.onDidDelete(onChange);
 
   context.subscriptions.push(watcher);
+}
+
+/**
+ * Watches the current profile's `settings.json` file and re-applies profile
+ * inheritance whenever it changes for a reason other than this extension's
+ * own writes (e.g. the user editing and saving the file).
+ *
+ * The active profile (and therefore its `settings.json` path) can change at
+ * any time, so this function also watches the global storage file used to
+ * track the active profile, and re-subscribes to the new profile's
+ * `settings.json` whenever it changes.
+ * @param context Extension context.
+ */
+export async function registerCurrentProfileSaveWatcher(
+  context: vscode.ExtensionContext,
+): Promise<void> {
+  const scheduleReapply = createDebouncedTrigger(() =>
+    updateCurrentProfileInheritance(context),
+  );
+
+  let settingsWatcher: vscode.FileSystemWatcher | undefined;
+
+  const resubscribe = async () => {
+    settingsWatcher?.dispose();
+    settingsWatcher = undefined;
+
+    let currentProfileDirectory: string;
+    try {
+      ({ currentProfileDirectory } = await getCurrentProfileDetails(context));
+    } catch (error) {
+      console.error(
+        "Failed to resolve the current profile directory for the save watcher:",
+        error,
+      );
+      return;
+    }
+
+    const settingsPath = path.join(currentProfileDirectory, "settings.json");
+    const watcher = createFileWatcher(settingsPath);
+    const onChange = async () => {
+      const latestContent = await readRawSettingsFile(settingsPath);
+      if (selfWriteTracker.isSelfWrite(settingsPath, latestContent)) {
+        return; // Our own write; nothing changed from the user's perspective.
+      }
+      scheduleReapply();
+    };
+    watcher.onDidChange(onChange);
+    watcher.onDidCreate(onChange);
+    settingsWatcher = watcher;
+  };
+
+  await resubscribe();
+
+  // The active profile (and therefore the path watched above) can change at
+  // any time, so watch the global storage file used to track it and
+  // re-subscribe to the new profile's settings.json whenever it changes.
+  const globalStoragePath = getGlobalStoragePath(context);
+  const profileWatcher = createFileWatcher(globalStoragePath);
+  profileWatcher.onDidChange(resubscribe);
+  profileWatcher.onDidCreate(resubscribe);
+  profileWatcher.onDidDelete(resubscribe);
+
+  context.subscriptions.push(profileWatcher, {
+    dispose: () => settingsWatcher?.dispose(),
+  });
 }
