@@ -226,6 +226,120 @@ suite("Extension integration", () => {
       ["esbenp.prettier-vscode"],
     );
   });
+
+  test("falls back to the emptyWindows profile association when no profile menu or workspace matches", async () => {
+    const currentProfile: ProfileDescriptor = {
+      name: "Custom",
+      location: "custom-profile",
+    };
+    const parentProfile: ProfileDescriptor = {
+      name: "Parent",
+      location: "parent-profile",
+    };
+    const backupFolderId = "1234567890abcdef1234567890abcdef";
+
+    await writeStorageWithEmptyWindowAssociation(
+      sandboxRoot,
+      currentProfile,
+      [parentProfile],
+      backupFolderId,
+    );
+    await writeProfileSettings(
+      sandboxRoot,
+      currentProfile,
+      `{
+    "editor.tabSize": 2
+}
+`,
+    );
+    await writeProfileSettings(
+      sandboxRoot,
+      parentProfile,
+      `{
+    "files.autoSave": "off"
+}
+`,
+    );
+
+    await updateConfig("parents", ["Parent"]);
+    await updateCurrentProfileInheritance(createContext(sandboxRoot));
+
+    // The inherited "files.autoSave" setting is only merged into the Custom
+    // profile if `getCurrentProfileName()` resolved "Custom" via the
+    // emptyWindows fallback rather than defaulting to "Default".
+    const updatedSettingsPath = path.join(
+      getProfileDirectory(sandboxRoot, currentProfile),
+      "settings.json",
+    );
+    const updatedSettingsRaw = await fs.readFile(updatedSettingsPath, "utf8");
+    const updatedSettings = parse(updatedSettingsRaw) as Record<string, any>;
+    assert.strictEqual(updatedSettings["editor.tabSize"], 2);
+    assert.strictEqual(updatedSettings["files.autoSave"], "off");
+
+    // The Default profile's settings file should remain untouched.
+    const defaultSettingsPath = path.join(
+      getProfileDirectory(sandboxRoot),
+      "settings.json",
+    );
+    await assert.rejects(fs.access(defaultSettingsPath));
+  });
+
+  test("falls back to the Default profile when the empty window has no recorded profile association", async () => {
+    const currentProfile: ProfileDescriptor = {
+      name: "Custom",
+      location: "custom-profile",
+    };
+    const parentProfile: ProfileDescriptor = {
+      name: "Parent",
+      location: "parent-profile",
+    };
+
+    // The backup folder ID of the last active window does not match any key
+    // in `profileAssociations.emptyWindows`, so the fallback should not match.
+    await writeStorageWithEmptyWindowAssociation(
+      sandboxRoot,
+      currentProfile,
+      [parentProfile],
+      "1234567890abcdef1234567890abcdef",
+      "some-other-backup-folder-id",
+    );
+    await writeProfileSettings(
+      sandboxRoot,
+      undefined,
+      `{
+    "editor.tabSize": 2
+}
+`,
+    );
+    await writeProfileSettings(
+      sandboxRoot,
+      parentProfile,
+      `{
+    "files.autoSave": "off"
+}
+`,
+    );
+
+    await updateConfig("parents", ["Parent"]);
+    await updateCurrentProfileInheritance(createContext(sandboxRoot));
+
+    // The Default profile's settings.json (not the Custom profile's) should
+    // receive the inherited setting, since no emptyWindows association matched.
+    const defaultSettingsPath = path.join(
+      getProfileDirectory(sandboxRoot),
+      "settings.json",
+    );
+    const defaultSettingsRaw = await fs.readFile(defaultSettingsPath, "utf8");
+    const defaultSettings = parse(defaultSettingsRaw) as Record<string, any>;
+    assert.strictEqual(defaultSettings["editor.tabSize"], 2);
+    assert.strictEqual(defaultSettings["files.autoSave"], "off");
+
+    const customSettingsPath = path.join(
+      getProfileDirectory(sandboxRoot, currentProfile),
+      "settings.json",
+    );
+    await assert.rejects(fs.access(customSettingsPath));
+  });
 });
 
 function createContext(rootDir: string): vscode.ExtensionContext {
@@ -274,6 +388,50 @@ async function writeStorage(
             checked: true,
           },
         ],
+      },
+    },
+    userDataProfiles: [currentProfile, ...extraProfiles],
+  };
+
+  await fs.writeFile(
+    path.join(getUserDirectory(rootDir), "globalStorage", "storage.json"),
+    JSON.stringify(storage, null, 4),
+    "utf8",
+  );
+}
+
+/**
+ * Writes a `storage.json` that mimics VS Code 1.127+, where the
+ * `profileMenu` structure is no longer present and profile detection for
+ * empty windows (no workspace/folder open) relies on
+ * `profileAssociations.emptyWindows` keyed by the last active window's
+ * backup folder ID.
+ * @param backupFolderId The backup folder ID reported by `windowsState.lastActiveWindow.backupPath`.
+ * @param associatedBackupFolderId The backup folder ID key used in `profileAssociations.emptyWindows`. Defaults to `backupFolderId` so the association matches; pass a different value to simulate no match.
+ */
+async function writeStorageWithEmptyWindowAssociation(
+  rootDir: string,
+  currentProfile: ProfileDescriptor,
+  extraProfiles: ProfileDescriptor[],
+  backupFolderId: string,
+  associatedBackupFolderId: string = backupFolderId,
+): Promise<void> {
+  const globalStorageDir = path.join(
+    getUserDirectory(rootDir),
+    "globalStorage",
+    "alexthomson.inherit-profile",
+  );
+  await fs.mkdir(globalStorageDir, { recursive: true });
+
+  const storage = {
+    windowsState: {
+      lastActiveWindow: {
+        backupPath: path.join(os.tmpdir(), "Backups", backupFolderId),
+      },
+    },
+    profileAssociations: {
+      emptyWindows: {
+        [associatedBackupFolderId]: currentProfile.location,
       },
     },
     userDataProfiles: [currentProfile, ...extraProfiles],
