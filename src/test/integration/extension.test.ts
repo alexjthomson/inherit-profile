@@ -340,6 +340,62 @@ suite("Extension integration", () => {
     );
     await assert.rejects(fs.access(customSettingsPath));
   });
+
+  test("inherits object-valued settings such as files.exclude without splitting their keys (issue #5)", async () => {
+    const currentProfile: ProfileDescriptor = {
+      name: "Custom",
+      location: "custom-profile",
+    };
+
+    await writeStorage(sandboxRoot, currentProfile);
+    await writeProfileSettings(
+      sandboxRoot,
+      undefined,
+      `{
+    "files.exclude": {
+        "README.md": true
+    },
+    "workbench.colorCustomizations": {
+        "editor.background": "#000000"
+    }
+}
+`,
+    );
+    await writeProfileSettings(
+      sandboxRoot,
+      currentProfile,
+      `{
+    "editor.tabSize": 2
+}
+`,
+    );
+
+    await updateConfig("parents", ["Default"]);
+    await updateCurrentProfileInheritance(createContext(sandboxRoot));
+
+    const updatedSettingsPath = path.join(
+      getProfileDirectory(sandboxRoot, currentProfile),
+      "settings.json",
+    );
+    const updatedSettingsRaw = await fs.readFile(updatedSettingsPath, "utf8");
+    const updatedSettings = parse(updatedSettingsRaw) as Record<string, any>;
+
+    // The inherited `files.exclude` setting must remain a single object-valued
+    // key, matching the shape VS Code expects, rather than being split into
+    // `files.exclude.README.md`.
+    assert.deepStrictEqual(updatedSettings["files.exclude"], {
+      "README.md": true,
+    });
+    assert.strictEqual(updatedSettings["files.exclude.README.md"], undefined);
+
+    assert.deepStrictEqual(updatedSettings["workbench.colorCustomizations"], {
+      "editor.background": "#000000",
+    });
+    assert.strictEqual(
+      updatedSettings["workbench.colorCustomizations.editor.background"],
+      undefined,
+    );
+  });
 });
 
 function createContext(rootDir: string): vscode.ExtensionContext {

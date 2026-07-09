@@ -9,6 +9,7 @@ import {
   INHERITED_SETTINGS_START_MARKER,
   insertBeforeClose,
   mergeFlattenedSettings,
+  NON_FLATTENABLE_SETTINGS,
   removeTrailingComma,
   sortSettings,
   splitRawSettingsByClosingBrace,
@@ -29,6 +30,95 @@ suite("profileSettings helpers", () => {
       {
         "editor.fontSize": 14,
         "editor.rulers": [80, 100],
+        "files.autoSave": "off",
+      },
+    );
+  });
+
+  test("flattenSettings does not split keys inside files.exclude (issue #5)", () => {
+    assert.deepStrictEqual(
+      flattenSettings({
+        "files.exclude": {
+          "README.md": true,
+        },
+      }),
+      {
+        "files.exclude": {
+          "README.md": true,
+        },
+      },
+    );
+  });
+
+  test("flattenSettings does not split keys inside files.exclude when given nested notation", () => {
+    assert.deepStrictEqual(
+      flattenSettings({
+        files: {
+          exclude: {
+            "README.md": true,
+          },
+          autoSave: "off",
+        },
+      }),
+      {
+        "files.exclude": {
+          "README.md": true,
+        },
+        "files.autoSave": "off",
+      },
+    );
+  });
+
+  test("flattenSettings preserves every known non-flattenable setting as a single leaf entry", () => {
+    for (const key of NON_FLATTENABLE_SETTINGS) {
+      const value = { "some.dotted.data.key": true };
+      assert.deepStrictEqual(
+        flattenSettings({ [key]: value }),
+        { [key]: value },
+        `Expected "${key}" to be preserved as a single leaf entry.`,
+      );
+    }
+  });
+
+  test("flattenSettings keeps theme-scoped color customizations intact", () => {
+    assert.deepStrictEqual(
+      flattenSettings({
+        "workbench.colorCustomizations": {
+          "editor.background": "#000000",
+          "[Default Dark+]": {
+            "statusBar.background": "#111111",
+          },
+        },
+      }),
+      {
+        "workbench.colorCustomizations": {
+          "editor.background": "#000000",
+          "[Default Dark+]": {
+            "statusBar.background": "#111111",
+          },
+        },
+      },
+    );
+  });
+
+  test("flattenSettings still flattens ordinary nested settings that are not opaque data maps", () => {
+    assert.deepStrictEqual(
+      flattenSettings({
+        editor: {
+          fontSize: 14,
+          rulers: [80, 100],
+        },
+        terminal: {
+          integrated: {
+            fontSize: 12,
+          },
+        },
+        "files.autoSave": "off",
+      }),
+      {
+        "editor.fontSize": 14,
+        "editor.rulers": [80, 100],
+        "terminal.integrated.fontSize": 12,
         "files.autoSave": "off",
       },
     );

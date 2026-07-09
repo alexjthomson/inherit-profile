@@ -12,8 +12,49 @@ export const WARNING_EXPLAIN =
   "//          The markers are used to identify inserted inherited settings.";
 
 /**
+ * Well-known VS Code settings whose value is a JSON object that must be
+ * treated as a single, opaque leaf value rather than a nested settings
+ * namespace.
+ *
+ * The keys inside these objects are user/data defined (glob patterns,
+ * language identifiers, color identifiers, environment variable names, etc.)
+ * rather than nested setting names. Flattening into them would rewrite keys
+ * such as `"README.md"` inside `files.exclude` into `files.exclude.README.md`,
+ * which VS Code does not recognise as part of the original setting.
+ *
+ * @see https://github.com/alexjthomson/inherit-profile/issues/5
+ */
+export const NON_FLATTENABLE_SETTINGS: ReadonlySet<string> = new Set([
+  "files.exclude",
+  "files.watcherExclude",
+  "files.readonlyInclude",
+  "files.readonlyExclude",
+  "files.associations",
+  "search.exclude",
+  "workbench.editorAssociations",
+  "workbench.colorCustomizations",
+  "editor.tokenColorCustomizations",
+  "editor.semanticTokenColorCustomizations",
+  "emmet.includeLanguages",
+  "emmet.syntaxProfiles",
+  "emmet.variables",
+  "explorer.fileNesting.patterns",
+  "terminal.integrated.env.linux",
+  "terminal.integrated.env.osx",
+  "terminal.integrated.env.windows",
+  "terminal.integrated.profiles.linux",
+  "terminal.integrated.profiles.osx",
+  "terminal.integrated.profiles.windows",
+  "workbench.editor.customLabels.patterns",
+]);
+
+/**
  * Recursively flattens settings into a single record that maps the setting key
  * to its value.
+ *
+ * Keys that match a known {@link NON_FLATTENABLE_SETTINGS} entry are kept as a
+ * single leaf entry, even though their value is an object, since those
+ * objects hold data (e.g. glob patterns) rather than nested settings.
  * @param settings Settings to flatten.
  * @param parentKey Parent key from previous iteration.
  * @param result Flattened result to return.
@@ -26,7 +67,12 @@ export function flattenSettings(
 ): Record<string, any> {
   for (const [key, value] of Object.entries(settings)) {
     const newKey = parentKey ? `${parentKey}.${key}` : key;
-    if (value && typeof value === "object" && !Array.isArray(value)) {
+    const isFlattenableObject =
+      value &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      !NON_FLATTENABLE_SETTINGS.has(newKey);
+    if (isFlattenableObject) {
       flattenSettings(value, newKey, result);
     } else {
       result[newKey] = value;
