@@ -1,3 +1,5 @@
+import * as path from "path";
+
 export const INHERITED_SETTINGS_START_MARKER =
   "// --- INHERITED SETTINGS MARKER START --- //";
 export const INHERITED_SETTINGS_END_MARKER =
@@ -136,6 +138,30 @@ export function stripManagedProfileSettings<T>(
   const strippedSettings = { ...settings };
   delete strippedSettings[INHERITED_SETTINGS_INSERTION_BOUNDARY_KEY];
   return strippedSettings;
+}
+
+/**
+ * Resolves the absolute path to each named parent profile's `settings.json`
+ * file, preserving order and silently skipping any name that isn't present
+ * in `profiles` (e.g. a configured parent profile that has been renamed or
+ * deleted).
+ * @param parentProfileNames Names of the parent profiles to resolve, as
+ * configured via `inheritProfile.parents`.
+ * @param profiles Mapping from profile name to its absolute directory.
+ * @returns Absolute paths to each resolved parent profile's `settings.json`.
+ */
+export function resolveParentSettingsPaths(
+  parentProfileNames: readonly string[],
+  profiles: Readonly<Record<string, string>>,
+): string[] {
+  const settingsPaths: string[] = [];
+  for (const parentProfileName of parentProfileNames) {
+    const parentProfileDirectory = profiles[parentProfileName];
+    if (parentProfileDirectory) {
+      settingsPaths.push(path.join(parentProfileDirectory, "settings.json"));
+    }
+  }
+  return settingsPaths;
 }
 
 /**

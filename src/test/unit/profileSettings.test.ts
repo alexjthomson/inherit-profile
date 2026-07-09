@@ -1,4 +1,5 @@
 import * as assert from "assert";
+import * as path from "path";
 
 import {
   buildInheritedSettingsBlock,
@@ -13,6 +14,7 @@ import {
   mergeInheritedExtensions,
   NON_FLATTENABLE_SETTINGS,
   removeTrailingComma,
+  resolveParentSettingsPaths,
   sortSettings,
   splitRawSettingsByClosingBrace,
   stripInheritedExtensions,
@@ -191,6 +193,36 @@ suite("profileSettings helpers", () => {
         "editor.fontSize": 16,
       },
     );
+  });
+
+  test("resolveParentSettingsPaths resolves settings.json for each known parent profile in order", () => {
+    assert.deepStrictEqual(
+      resolveParentSettingsPaths(["Default", "Work"], {
+        Default: "/users/alex/profile-default",
+        Work: "/users/alex/profile-work",
+      }),
+      [
+        path.join("/users/alex/profile-default", "settings.json"),
+        path.join("/users/alex/profile-work", "settings.json"),
+      ],
+    );
+  });
+
+  test("resolveParentSettingsPaths skips parent profile names that have no known directory", () => {
+    assert.deepStrictEqual(
+      resolveParentSettingsPaths(["Default", "Missing", "Work"], {
+        Default: "/users/alex/profile-default",
+        Work: "/users/alex/profile-work",
+      }),
+      [
+        path.join("/users/alex/profile-default", "settings.json"),
+        path.join("/users/alex/profile-work", "settings.json"),
+      ],
+    );
+  });
+
+  test("resolveParentSettingsPaths returns an empty array when there are no parent profiles", () => {
+    assert.deepStrictEqual(resolveParentSettingsPaths([], {}), []);
   });
 
   test("removeTrailingComma ignores comments when trimming the final entry", () => {

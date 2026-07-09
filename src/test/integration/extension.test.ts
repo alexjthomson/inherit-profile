@@ -12,6 +12,7 @@ import {
 } from "../../profileSettings";
 import {
   registerCurrentProfileSaveWatcher,
+  registerParentProfileSaveWatcher,
   removeCurrentProfileInheritedSettings,
   updateCurrentProfileInheritance,
 } from "../../profiles";
@@ -609,6 +610,185 @@ suite("Extension integration", () => {
       await new Promise((resolve) => setTimeout(resolve, 750));
       const contentAfterWaiting = await fs.readFile(settingsPath, "utf8");
       assert.strictEqual(contentAfterWaiting, contentAfterOwnWrite);
+    } finally {
+      for (const subscription of context.subscriptions) {
+        subscription.dispose();
+      }
+    }
+  });
+
+  test("re-applies inheritance when a parent profile's settings.json is saved externally", async function () {
+    this.timeout(20000);
+
+    const currentProfile: ProfileDescriptor = {
+      name: "Child",
+      location: "child-profile",
+    };
+    const parentProfile: ProfileDescriptor = {
+      name: "Parent",
+      location: "parent-profile",
+    };
+
+    await writeStorage(sandboxRoot, currentProfile, [parentProfile]);
+    await writeProfileSettings(
+      sandboxRoot,
+      currentProfile,
+      `{
+    "editor.tabSize": 2
+}
+`,
+    );
+    await writeProfileSettings(
+      sandboxRoot,
+      parentProfile,
+      `{
+    "files.autoSave": "off"
+}
+`,
+    );
+
+    await updateConfig("parents", ["Parent"]);
+    const context = createContext(sandboxRoot);
+
+    try {
+      // Apply once up front, mirroring what happens on extension startup.
+      await updateCurrentProfileInheritance(context);
+      await registerParentProfileSaveWatcher(context);
+
+      // Watcher registration involves an async round-trip to set up the
+      // underlying OS-level watch, so give it a moment to settle before
+      // relying on it to observe the change below.
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      const currentSettingsPath = path.join(
+        getProfileDirectory(sandboxRoot, currentProfile),
+        "settings.json",
+      );
+      const parentSettingsPath = path.join(
+        getProfileDirectory(sandboxRoot, parentProfile),
+        "settings.json",
+      );
+
+      // Simulate the user editing and saving the parent profile's
+      // settings.json directly.
+      await fs.writeFile(
+        parentSettingsPath,
+        `{
+    "files.autoSave": "off",
+    "editor.fontSize": 18
+}
+`,
+        "utf8",
+      );
+
+      // The watcher should notice the external change to the parent profile
+      // and re-apply inheritance to the current profile, picking up the new
+      // inherited "editor.fontSize" setting.
+      const updatedSettings = await waitForSettings(
+        currentSettingsPath,
+        (settings) =>
+          settings["files.autoSave"] === "off" &&
+          settings["editor.fontSize"] === 18,
+        15000,
+      );
+
+      assert.strictEqual(updatedSettings["files.autoSave"], "off");
+      assert.strictEqual(updatedSettings["editor.fontSize"], 18);
+      assert.strictEqual(updatedSettings["editor.tabSize"], 2);
+    } finally {
+      for (const subscription of context.subscriptions) {
+        subscription.dispose();
+      }
+    }
+  });
+
+  test("re-subscribes to newly added parent profiles when inheritProfile.parents changes", async function () {
+    this.timeout(20000);
+
+    const currentProfile: ProfileDescriptor = {
+      name: "Child",
+      location: "child-profile",
+    };
+    const parentProfile: ProfileDescriptor = {
+      name: "ParentOne",
+      location: "parent-one-profile",
+    };
+    const secondParentProfile: ProfileDescriptor = {
+      name: "ParentTwo",
+      location: "parent-two-profile",
+    };
+
+    await writeStorage(sandboxRoot, currentProfile, [
+      parentProfile,
+      secondParentProfile,
+    ]);
+    await writeProfileSettings(
+      sandboxRoot,
+      currentProfile,
+      `{
+    "editor.tabSize": 2
+}
+`,
+    );
+    await writeProfileSettings(
+      sandboxRoot,
+      parentProfile,
+      `{
+    "files.autoSave": "off"
+}
+`,
+    );
+    await writeProfileSettings(
+      sandboxRoot,
+      secondParentProfile,
+      `{
+    "editor.fontSize": 20
+}
+`,
+    );
+
+    await updateConfig("parents", ["ParentOne"]);
+    const context = createContext(sandboxRoot);
+
+    try {
+      await updateCurrentProfileInheritance(context);
+      await registerParentProfileSaveWatcher(context);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      // Add the second parent profile to the configured list. The watcher
+      // should notice this configuration change and start watching the
+      // second parent profile's settings.json too.
+      await updateConfig("parents", ["ParentOne", "ParentTwo"]);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      const currentSettingsPath = path.join(
+        getProfileDirectory(sandboxRoot, currentProfile),
+        "settings.json",
+      );
+      const secondParentSettingsPath = path.join(
+        getProfileDirectory(sandboxRoot, secondParentProfile),
+        "settings.json",
+      );
+
+      // Simulate the user editing and saving the newly added parent
+      // profile's settings.json directly.
+      await fs.writeFile(
+        secondParentSettingsPath,
+        `{
+    "editor.fontSize": 24
+}
+`,
+        "utf8",
+      );
+
+      const updatedSettings = await waitForSettings(
+        currentSettingsPath,
+        (settings) => settings["editor.fontSize"] === 24,
+        15000,
+      );
+
+      assert.strictEqual(updatedSettings["editor.fontSize"], 24);
+      assert.strictEqual(updatedSettings["files.autoSave"], "off");
     } finally {
       for (const subscription of context.subscriptions) {
         subscription.dispose();
