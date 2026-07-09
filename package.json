@@ -117,7 +117,7 @@
     "unit-test": "npm run compile && mocha --ui tdd \"out/test/unit/**/*.test.js\""
   },
   "devDependencies": {
-    "@types/node": "22.x",
+    "@types/node": "26.x",
     "@types/vscode": "^1.125.0",
     "@typescript-eslint/eslint-plugin": "^8.39.0",
     "@typescript-eslint/parser": "^8.63.0",
