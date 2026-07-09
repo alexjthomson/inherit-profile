@@ -138,6 +138,78 @@ export function stripManagedProfileSettings<T>(
   return strippedSettings;
 }
 
+/**
+ * Shape of an entry inside a profile's `extensions.json` file that this
+ * extension cares about. Extra fields are preserved but ignored.
+ */
+export interface ExtensionEntry {
+  identifier?: { id?: string };
+  metadata?: Record<string, any>;
+  [key: string]: any;
+}
+
+/**
+ * Removes any extensions that were previously marked as inherited from
+ * another profile (i.e. extensions with a `metadata.inheritedFromProfile`
+ * field).
+ * @param extensions Extensions to filter.
+ * @returns Returns `extensions` without any previously-inherited entries.
+ */
+export function stripInheritedExtensions<T extends ExtensionEntry>(
+  extensions: readonly T[],
+): T[] {
+  return extensions.filter((extension) => !extension?.metadata?.inheritedFromProfile);
+}
+
+/**
+ * Merges extensions collected from a list of parent profiles into the
+ * current profile's extensions, tagging newly inherited extensions with
+ * `metadata.inheritedFromProfile` so they can be identified and removed
+ * later.
+ *
+ * Extensions that already exist in `currentExtensions` (matched by
+ * `identifier.id`) always take priority over an inherited extension with the
+ * same id. When more than one parent profile declares the same extension,
+ * the first profile in `parentProfiles` to declare it wins.
+ *
+ * @param currentExtensions Extensions already declared by the current
+ * profile. Any previously-inherited entries should already be stripped out
+ * (see {@link stripInheritedExtensions}).
+ * @param parentProfiles Ordered list of parent profile names paired with the
+ * extensions declared by that profile.
+ * @returns Returns the merged list of extensions to write back to the
+ * current profile.
+ */
+export function mergeInheritedExtensions<T extends ExtensionEntry>(
+  currentExtensions: readonly T[],
+  parentProfiles: readonly { profileName: string; extensions: readonly T[] }[],
+): T[] {
+  const extensionMap: Record<string, T> = {};
+  for (const extension of currentExtensions) {
+    const id = extension?.identifier?.id;
+    if (id) {
+      extensionMap[id] = extension;
+    }
+  }
+
+  for (const { profileName, extensions } of parentProfiles) {
+    for (const extension of extensions) {
+      const id = extension?.identifier?.id;
+      if (id && !(id in extensionMap)) {
+        extensionMap[id] = {
+          ...extension,
+          metadata: {
+            ...(extension.metadata ?? {}),
+            inheritedFromProfile: profileName,
+          },
+        };
+      }
+    }
+  }
+
+  return Object.values(extensionMap);
+}
+
 export function removeInsertionBoundarySetting(after: string): string {
   const boundaryIndex = after.indexOf(
     `"${INHERITED_SETTINGS_INSERTION_BOUNDARY_KEY}"`,

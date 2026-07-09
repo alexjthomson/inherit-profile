@@ -10,10 +10,12 @@ import {
   INHERITED_SETTINGS_START_MARKER,
   insertBeforeClose,
   mergeFlattenedSettings,
+  mergeInheritedExtensions,
   removeInsertionBoundarySetting,
   removeTrailingComma,
   sortSettings,
   splitRawSettingsByClosingBrace,
+  stripInheritedExtensions,
   stripManagedProfileSettings,
   subtractSettings,
 } from "./profileSettings";
@@ -488,6 +490,12 @@ async function applyInheritedSettings(
     await writeInheritedSettings(currentProfilePath, inheritedSettings);
   }
 
+  const config = vscode.workspace.getConfiguration("inheritProfile");
+  if (!config.get<boolean>("inheritExtensions", true)) {
+    console.info("Extension inheritance is disabled, skipping extensions.");
+    return;
+  }
+
   const currentExtensionsPath = path.join(
     currentProfileDirectory,
     "extensions.json",
@@ -525,27 +533,20 @@ async function collectInheritedExtensions(
   currentExtensions: any[],
   profiles: Record<string, string>,
 ): Promise<any[]> {
-  // Remove inherited extensions from the current profile, and convert to a map of id -> extension
-  // Inherited extensions have the field `inheritedFromProfile` in their `metadata` object.
-  const filteredExtensions = currentExtensions.filter((ext: any) => {
-    return !ext?.metadata?.inheritedFromProfile;
-  });
-  const extensionMap: Record<string, any> = {};
-  for (const ext of filteredExtensions) {
-    if (ext?.identifier?.id) {
-      extensionMap[ext.identifier.id] = ext;
-    }
-  }
+  // Remove any previously-inherited extensions from the current profile
+  // before recomputing which extensions should be inherited:
+  const filteredExtensions = stripInheritedExtensions(currentExtensions);
 
   // Get the list of parent profiles:
   const config = vscode.workspace.getConfiguration("inheritProfile");
-  const parentProfiles = config.get<string[]>("parents", []);
+  const parentProfileNames = config.get<string[]>("parents", []);
   console.info(
-    `Collecting extensions from ${parentProfiles.length} parent profiles.`,
+    `Collecting extensions from ${parentProfileNames.length} parent profiles.`,
   );
 
-  // Collect extensions from each of the parent profiles:
-  for (const profileName of parentProfiles) {
+  // Collect extensions declared by each of the parent profiles:
+  const parentProfiles: { profileName: string; extensions: any[] }[] = [];
+  for (const profileName of parentProfileNames) {
     const profileDirectory = profiles[profileName];
     if (!profileDirectory) {
       console.warn(
@@ -561,26 +562,17 @@ async function collectInheritedExtensions(
     console.info(
       `Found ${profileExtensions.length} extensions in \`${profileName}\`.`,
     );
-
-    for (const ext of profileExtensions) {
-      // Add extension if it does not already exist:
-      const id = ext?.identifier?.id;
-      if (id && !(id in extensionMap)) {
-        // Mark the extension as inherited:
-        if (!ext.metadata) {
-          ext.metadata = {};
-        }
-        ext.metadata.inheritedFromProfile = profileName;
-
-        extensionMap[id] = ext;
-        console.info(
-          `Inheriting extension \`${id}\` from profile \`${profileName}\`.`,
-        );
-      }
-    }
+    parentProfiles.push({ profileName, extensions: profileExtensions });
   }
 
-  return Object.values(extensionMap);
+  const mergedExtensions = mergeInheritedExtensions(
+    filteredExtensions,
+    parentProfiles,
+  );
+  console.info(
+    `Inherited ${mergedExtensions.length - filteredExtensions.length} new extension(s) from parent profiles.`,
+  );
+  return mergedExtensions;
 }
 
 /**
@@ -623,9 +615,7 @@ export async function removeCurrentProfileInheritedSettings(
     const currentExtensions = Array.isArray(parsedCurrentExtensions)
       ? parsedCurrentExtensions
       : [];
-    const filteredExtensions = currentExtensions.filter((ext: any) => {
-      return !ext?.metadata?.inheritedFromProfile;
-    });
+    const filteredExtensions = stripInheritedExtensions(currentExtensions);
     // Only write if there was a change to avoid unnecessary fs writes
     if (filteredExtensions.length !== currentExtensions.length) {
       console.info(

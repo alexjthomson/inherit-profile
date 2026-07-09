@@ -79,6 +79,11 @@
           "default": true,
           "description": "Updates the inherited settings when the current profile is changed."
         },
+        "inheritProfile.inheritExtensions": {
+          "type": "boolean",
+          "default": true,
+          "description": "Inherits extensions from parent profiles. Disable to only inherit settings."
+        },
         "inheritProfile.showMessages": {
           "type": "boolean",
           "default": false,

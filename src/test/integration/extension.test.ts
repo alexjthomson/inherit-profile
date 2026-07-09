@@ -29,11 +29,13 @@ suite("Extension integration", () => {
     );
     await updateConfig("parents", undefined);
     await updateConfig("showMessages", false);
+    await updateConfig("inheritExtensions", undefined);
   });
 
   teardown(async () => {
     await updateConfig("parents", undefined);
     await updateConfig("showMessages", undefined);
+    await updateConfig("inheritExtensions", undefined);
     if (sandboxRoot) {
       await fs.rm(sandboxRoot, { recursive: true, force: true });
     }
@@ -394,6 +396,69 @@ suite("Extension integration", () => {
     assert.strictEqual(
       updatedSettings["workbench.colorCustomizations.editor.background"],
       undefined,
+    );
+  });
+
+  test("does not inherit extensions when inheritExtensions is disabled", async () => {
+    const currentProfile: ProfileDescriptor = {
+      name: "Custom",
+      location: "custom-profile",
+    };
+    const parentProfile: ProfileDescriptor = {
+      name: "Parent",
+      location: "parent-profile",
+    };
+
+    await writeStorage(sandboxRoot, currentProfile, [parentProfile]);
+    await writeProfileSettings(
+      sandboxRoot,
+      currentProfile,
+      `{
+    "editor.tabSize": 2
+}
+`,
+    );
+    await writeProfileSettings(
+      sandboxRoot,
+      parentProfile,
+      `{
+    "files.autoSave": "off"
+}
+`,
+    );
+    await writeProfileExtensions(sandboxRoot, currentProfile, [
+      createExtension("esbenp.prettier-vscode"),
+    ]);
+    await writeProfileExtensions(sandboxRoot, parentProfile, [
+      createExtension("ms-python.python"),
+    ]);
+
+    await updateConfig("parents", ["Parent"]);
+    await updateConfig("inheritExtensions", false);
+    await updateCurrentProfileInheritance(createContext(sandboxRoot));
+
+    // Settings inheritance is unaffected by the extension inheritance toggle.
+    const updatedSettingsPath = path.join(
+      getProfileDirectory(sandboxRoot, currentProfile),
+      "settings.json",
+    );
+    const updatedSettings = parse(
+      await fs.readFile(updatedSettingsPath, "utf8"),
+    ) as Record<string, any>;
+    assert.strictEqual(updatedSettings["files.autoSave"], "off");
+
+    // Extensions must be left completely untouched: no parent extension is
+    // inherited, and the file is not rewritten.
+    const updatedExtensionsPath = path.join(
+      getProfileDirectory(sandboxRoot, currentProfile),
+      "extensions.json",
+    );
+    const updatedExtensions = JSON.parse(
+      await fs.readFile(updatedExtensionsPath, "utf8"),
+    ) as Array<{ identifier: { id: string } }>;
+    assert.deepStrictEqual(
+      updatedExtensions.map((extension) => extension.identifier.id),
+      ["esbenp.prettier-vscode"],
     );
   });
 });

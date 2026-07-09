@@ -46,10 +46,13 @@ extension starts.
         "parents": ["Default"],
         "runOnStartup": true,
         "runOnProfileChange": true,
+        "inheritExtensions": true,
         "showMessages": false
     }
 }
 ```
+
+> **Note**: Set `inheritExtensions` to `false` if you only want to inherit settings and not extensions from your parent profiles.
 
 ---
 
@@ -148,5 +151,5 @@ The final inherited settings are then inserted into the current profile between 
 - [x] Add a warning comment inside the inherited settings.
 - [ ] Tidy up [`profiles.ts`](src/profiles.ts).
 - [x] Implement extension inheritance.
-- [ ] Add a configuration option to disable extension inheritance.
+- [x] Add a configuration option to disable extension inheritance.
 - [x] Implement unit testing.
