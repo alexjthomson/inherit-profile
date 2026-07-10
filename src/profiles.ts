@@ -10,13 +10,52 @@ import {
   INHERITED_SETTINGS_START_MARKER,
   insertBeforeClose,
   mergeFlattenedSettings,
+  mergeInheritedExtensions,
   removeInsertionBoundarySetting,
   removeTrailingComma,
   sortSettings,
   splitRawSettingsByClosingBrace,
+  stripInheritedExtensions,
   stripManagedProfileSettings,
   subtractSettings,
 } from "./profileSettings";
+import { SelfWriteTracker } from "./selfWriteTracker";
+
+/**
+ * Tracks content written to profile files by this extension so that file
+ * watchers reacting to those same files can tell the difference between our
+ * own writes and genuine external edits.
+ */
+const selfWriteTracker = new SelfWriteTracker();
+
+/**
+ * Writes `content` to `filePath` and records it with {@link selfWriteTracker}
+ * so that file watchers set up to react to external edits of this file (see
+ * `isManagedFileSelfWrite`) can recognise and ignore the change this write is
+ * about to cause.
+ */
+async function writeManagedFile(
+  filePath: string,
+  content: string,
+): Promise<void> {
+  selfWriteTracker.record(filePath, content);
+  await fs.writeFile(filePath, content, "utf8");
+}
+
+/**
+ * Reports whether the most recent write to `filePath` (via
+ * {@link writeManagedFile}) wrote exactly `content`, meaning a file watcher
+ * observing this change is seeing this extension's own write rather than an
+ * external edit.
+ * @param filePath Absolute path to the file that changed.
+ * @param content The file's current content.
+ */
+export function isManagedFileSelfWrite(
+  filePath: string,
+  content: string,
+): boolean {
+  return selfWriteTracker.isSelfWrite(filePath, content);
+}
 
 /**
  * Reads JSONC (JSON with comments).
@@ -45,7 +84,7 @@ function getUserDirectory(context: vscode.ExtensionContext): string {
  * @param context Extension context.
  * @returns Returns the path to the global storage JSON file.
  */
-function getGlobalStoragePath(context: vscode.ExtensionContext): string {
+export function getGlobalStoragePath(context: vscode.ExtensionContext): string {
   return path.resolve(context.globalStorageUri.fsPath, "../storage.json");
 }
 
@@ -135,7 +174,7 @@ function findByKeyValuePair(
  * @param context Extension context.
  * @returns Returns the name of the current profile.
  */
-async function getCurrentProfileName(
+export async function getCurrentProfileName(
   context: vscode.ExtensionContext,
 ): Promise<string> {
   const storage = await readGlobalStorage(context);
@@ -187,7 +226,10 @@ async function getCurrentProfileName(
   if (lastActiveWindow?.backupPath) {
     const backupFolderId = path.basename(lastActiveWindow.backupPath);
     const emptyWindows = storage.profileAssociations?.emptyWindows;
-    if (emptyWindows && Object.prototype.hasOwnProperty.call(emptyWindows, backupFolderId)) {
+    if (
+      emptyWindows &&
+      Object.prototype.hasOwnProperty.call(emptyWindows, backupFolderId)
+    ) {
       const profileId = emptyWindows[backupFolderId];
       const profile = findByKeyValuePair(
         storage.userDataProfiles,
@@ -209,7 +251,7 @@ async function getCurrentProfileName(
  * @param context Extension context.
  * @returns A mapping from profile name to the directory for the profile.
  */
-async function getProfileMap(
+export async function getProfileMap(
   context: vscode.ExtensionContext,
 ): Promise<Record<string, string>> {
   const map: Record<string, string> = {};
@@ -239,7 +281,7 @@ async function getProfileMap(
  * @param context Extension context.
  * @returns Returns details about the current profile.
  */
-async function getCurrentProfileDetails(
+export async function getCurrentProfileDetails(
   context: vscode.ExtensionContext,
 ): Promise<{
   currentProfileName: string;
@@ -405,7 +447,7 @@ async function removeInheritedSettingsFromFile(
   }
 
   // Write cleaned file:
-  await fs.writeFile(settingsPath, cleaned + "\n", "utf8");
+  await writeManagedFile(settingsPath, cleaned + "\n");
 }
 
 /**
@@ -438,13 +480,15 @@ async function writeInheritedSettings(
   const finalSettings = beforeClosePlusBlock + afterClose;
 
   // Write the final settings to the settings path:
-  await fs.writeFile(settingsPath, finalSettings, "utf8");
+  await writeManagedFile(settingsPath, finalSettings);
 }
 
 /**
  * Reads and returns a raw `settings.json` file.
  */
-async function readRawSettingsFile(settingsPath: string): Promise<string> {
+export async function readRawSettingsFile(
+  settingsPath: string,
+): Promise<string> {
   try {
     return await fs.readFile(settingsPath, "utf8");
   } catch (error) {
@@ -485,6 +529,12 @@ async function applyInheritedSettings(
     await writeInheritedSettings(currentProfilePath, inheritedSettings);
   }
 
+  const config = vscode.workspace.getConfiguration("inheritProfile");
+  if (!config.get<boolean>("inheritExtensions", true)) {
+    console.info("Extension inheritance is disabled, skipping extensions.");
+    return;
+  }
+
   const currentExtensionsPath = path.join(
     currentProfileDirectory,
     "extensions.json",
@@ -522,27 +572,20 @@ async function collectInheritedExtensions(
   currentExtensions: any[],
   profiles: Record<string, string>,
 ): Promise<any[]> {
-  // Remove inherited extensions from the current profile, and convert to a map of id -> extension
-  // Inherited extensions have the field `inheritedFromProfile` in their `metadata` object.
-  const filteredExtensions = currentExtensions.filter((ext: any) => {
-    return !ext?.metadata?.inheritedFromProfile;
-  });
-  const extensionMap: Record<string, any> = {};
-  for (const ext of filteredExtensions) {
-    if (ext?.identifier?.id) {
-      extensionMap[ext.identifier.id] = ext;
-    }
-  }
+  // Remove any previously-inherited extensions from the current profile
+  // before recomputing which extensions should be inherited:
+  const filteredExtensions = stripInheritedExtensions(currentExtensions);
 
   // Get the list of parent profiles:
   const config = vscode.workspace.getConfiguration("inheritProfile");
-  const parentProfiles = config.get<string[]>("parents", []);
+  const parentProfileNames = config.get<string[]>("parents", []);
   console.info(
-    `Collecting extensions from ${parentProfiles.length} parent profiles.`,
+    `Collecting extensions from ${parentProfileNames.length} parent profiles.`,
   );
 
-  // Collect extensions from each of the parent profiles:
-  for (const profileName of parentProfiles) {
+  // Collect extensions declared by each of the parent profiles:
+  const parentProfiles: { profileName: string; extensions: any[] }[] = [];
+  for (const profileName of parentProfileNames) {
     const profileDirectory = profiles[profileName];
     if (!profileDirectory) {
       console.warn(
@@ -558,26 +601,17 @@ async function collectInheritedExtensions(
     console.info(
       `Found ${profileExtensions.length} extensions in \`${profileName}\`.`,
     );
-
-    for (const ext of profileExtensions) {
-      // Add extension if it does not already exist:
-      const id = ext?.identifier?.id;
-      if (id && !(id in extensionMap)) {
-        // Mark the extension as inherited:
-        if (!ext.metadata) {
-          ext.metadata = {};
-        }
-        ext.metadata.inheritedFromProfile = profileName;
-
-        extensionMap[id] = ext;
-        console.info(
-          `Inheriting extension \`${id}\` from profile \`${profileName}\`.`,
-        );
-      }
-    }
+    parentProfiles.push({ profileName, extensions: profileExtensions });
   }
 
-  return Object.values(extensionMap);
+  const mergedExtensions = mergeInheritedExtensions(
+    filteredExtensions,
+    parentProfiles,
+  );
+  console.info(
+    `Inherited ${mergedExtensions.length - filteredExtensions.length} new extension(s) from parent profiles.`,
+  );
+  return mergedExtensions;
 }
 
 /**
@@ -620,9 +654,7 @@ export async function removeCurrentProfileInheritedSettings(
     const currentExtensions = Array.isArray(parsedCurrentExtensions)
       ? parsedCurrentExtensions
       : [];
-    const filteredExtensions = currentExtensions.filter((ext: any) => {
-      return !ext?.metadata?.inheritedFromProfile;
-    });
+    const filteredExtensions = stripInheritedExtensions(currentExtensions);
     // Only write if there was a change to avoid unnecessary fs writes
     if (filteredExtensions.length !== currentExtensions.length) {
       console.info(
@@ -647,32 +679,4 @@ export async function removeCurrentProfileInheritedSettings(
       "Inherited settings removed from current profile!",
     );
   }
-}
-
-/**
- * Updates the inherited settings when the profile changes.
- * @param context Extension context.
- */
-export async function updateInheritedSettingsOnProfileChange(
-  context: vscode.ExtensionContext,
-) {
-  const globalStoragePath = getGlobalStoragePath(context);
-  let currentProfile = await getCurrentProfileName(context);
-
-  const watcher = vscode.workspace.createFileSystemWatcher(globalStoragePath);
-  const onChange = async () => {
-    const newProfileName = await getCurrentProfileName(context);
-    if (newProfileName !== currentProfile) {
-      currentProfile = newProfileName;
-      console.info(
-        "Current profile has changed, updating inherited settings...",
-      );
-      await updateCurrentProfileInheritance(context);
-    }
-  };
-  watcher.onDidChange(onChange);
-  watcher.onDidCreate(onChange);
-  watcher.onDidDelete(onChange);
-
-  context.subscriptions.push(watcher);
 }

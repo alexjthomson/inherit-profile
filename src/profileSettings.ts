@@ -1,3 +1,5 @@
+import * as path from "path";
+
 export const INHERITED_SETTINGS_START_MARKER =
   "// --- INHERITED SETTINGS MARKER START --- //";
 export const INHERITED_SETTINGS_END_MARKER =
@@ -12,8 +14,49 @@ export const WARNING_EXPLAIN =
   "//          The markers are used to identify inserted inherited settings.";
 
 /**
+ * Well-known VS Code settings whose value is a JSON object that must be
+ * treated as a single, opaque leaf value rather than a nested settings
+ * namespace.
+ *
+ * The keys inside these objects are user/data defined (glob patterns,
+ * language identifiers, color identifiers, environment variable names, etc.)
+ * rather than nested setting names. Flattening into them would rewrite keys
+ * such as `"README.md"` inside `files.exclude` into `files.exclude.README.md`,
+ * which VS Code does not recognise as part of the original setting.
+ *
+ * @see https://github.com/alexjthomson/inherit-profile/issues/5
+ */
+export const NON_FLATTENABLE_SETTINGS: ReadonlySet<string> = new Set([
+  "files.exclude",
+  "files.watcherExclude",
+  "files.readonlyInclude",
+  "files.readonlyExclude",
+  "files.associations",
+  "search.exclude",
+  "workbench.editorAssociations",
+  "workbench.colorCustomizations",
+  "editor.tokenColorCustomizations",
+  "editor.semanticTokenColorCustomizations",
+  "emmet.includeLanguages",
+  "emmet.syntaxProfiles",
+  "emmet.variables",
+  "explorer.fileNesting.patterns",
+  "terminal.integrated.env.linux",
+  "terminal.integrated.env.osx",
+  "terminal.integrated.env.windows",
+  "terminal.integrated.profiles.linux",
+  "terminal.integrated.profiles.osx",
+  "terminal.integrated.profiles.windows",
+  "workbench.editor.customLabels.patterns",
+]);
+
+/**
  * Recursively flattens settings into a single record that maps the setting key
  * to its value.
+ *
+ * Keys that match a known {@link NON_FLATTENABLE_SETTINGS} entry are kept as a
+ * single leaf entry, even though their value is an object, since those
+ * objects hold data (e.g. glob patterns) rather than nested settings.
  * @param settings Settings to flatten.
  * @param parentKey Parent key from previous iteration.
  * @param result Flattened result to return.
@@ -26,7 +69,12 @@ export function flattenSettings(
 ): Record<string, any> {
   for (const [key, value] of Object.entries(settings)) {
     const newKey = parentKey ? `${parentKey}.${key}` : key;
-    if (value && typeof value === "object" && !Array.isArray(value)) {
+    const isFlattenableObject =
+      value &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      !NON_FLATTENABLE_SETTINGS.has(newKey);
+    if (isFlattenableObject) {
       flattenSettings(value, newKey, result);
     } else {
       result[newKey] = value;
@@ -90,6 +138,102 @@ export function stripManagedProfileSettings<T>(
   const strippedSettings = { ...settings };
   delete strippedSettings[INHERITED_SETTINGS_INSERTION_BOUNDARY_KEY];
   return strippedSettings;
+}
+
+/**
+ * Resolves the absolute path to each named parent profile's `settings.json`
+ * file, preserving order and silently skipping any name that isn't present
+ * in `profiles` (e.g. a configured parent profile that has been renamed or
+ * deleted).
+ * @param parentProfileNames Names of the parent profiles to resolve, as
+ * configured via `inheritProfile.parents`.
+ * @param profiles Mapping from profile name to its absolute directory.
+ * @returns Absolute paths to each resolved parent profile's `settings.json`.
+ */
+export function resolveParentSettingsPaths(
+  parentProfileNames: readonly string[],
+  profiles: Readonly<Record<string, string>>,
+): string[] {
+  const settingsPaths: string[] = [];
+  for (const parentProfileName of parentProfileNames) {
+    const parentProfileDirectory = profiles[parentProfileName];
+    if (parentProfileDirectory) {
+      settingsPaths.push(path.join(parentProfileDirectory, "settings.json"));
+    }
+  }
+  return settingsPaths;
+}
+
+/**
+ * Shape of an entry inside a profile's `extensions.json` file that this
+ * extension cares about. Extra fields are preserved but ignored.
+ */
+export interface ExtensionEntry {
+  identifier?: { id?: string };
+  metadata?: Record<string, any>;
+  [key: string]: any;
+}
+
+/**
+ * Removes any extensions that were previously marked as inherited from
+ * another profile (i.e. extensions with a `metadata.inheritedFromProfile`
+ * field).
+ * @param extensions Extensions to filter.
+ * @returns Returns `extensions` without any previously-inherited entries.
+ */
+export function stripInheritedExtensions<T extends ExtensionEntry>(
+  extensions: readonly T[],
+): T[] {
+  return extensions.filter((extension) => !extension?.metadata?.inheritedFromProfile);
+}
+
+/**
+ * Merges extensions collected from a list of parent profiles into the
+ * current profile's extensions, tagging newly inherited extensions with
+ * `metadata.inheritedFromProfile` so they can be identified and removed
+ * later.
+ *
+ * Extensions that already exist in `currentExtensions` (matched by
+ * `identifier.id`) always take priority over an inherited extension with the
+ * same id. When more than one parent profile declares the same extension,
+ * the first profile in `parentProfiles` to declare it wins.
+ *
+ * @param currentExtensions Extensions already declared by the current
+ * profile. Any previously-inherited entries should already be stripped out
+ * (see {@link stripInheritedExtensions}).
+ * @param parentProfiles Ordered list of parent profile names paired with the
+ * extensions declared by that profile.
+ * @returns Returns the merged list of extensions to write back to the
+ * current profile.
+ */
+export function mergeInheritedExtensions<T extends ExtensionEntry>(
+  currentExtensions: readonly T[],
+  parentProfiles: readonly { profileName: string; extensions: readonly T[] }[],
+): T[] {
+  const extensionMap: Record<string, T> = {};
+  for (const extension of currentExtensions) {
+    const id = extension?.identifier?.id;
+    if (id) {
+      extensionMap[id] = extension;
+    }
+  }
+
+  for (const { profileName, extensions } of parentProfiles) {
+    for (const extension of extensions) {
+      const id = extension?.identifier?.id;
+      if (id && !(id in extensionMap)) {
+        extensionMap[id] = {
+          ...extension,
+          metadata: {
+            ...(extension.metadata ?? {}),
+            inheritedFromProfile: profileName,
+          },
+        };
+      }
+    }
+  }
+
+  return Object.values(extensionMap);
 }
 
 export function removeInsertionBoundarySetting(after: string): string {
