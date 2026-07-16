@@ -991,18 +991,19 @@ async function collectInheritedExtensions(
   }
 
   const parentProfiles: { profileName: string; extensions: any[] }[] = [];
+  const parentDisabledIds: string[] = [];
   for (const profileName of parentProfileNames) {
     const profileDirectory = profiles[profileName];
     if (!profileDirectory) continue;
     const rawProfileExtensions = await readJSON(
       path.join(profileDirectory, "extensions.json")
     );
-    // 从 SQLite state.vscdb 读取该父级中被禁用的扩展
+    // 收集禁用扩展 ID（从 SQLite state.vscdb）用于后续过滤
     const disabledIds = getDisabledExtensions(profileDirectory);
-    // 过滤掉禁用的扩展 (disabled: true) 和 state.vscdb 中标记为禁用的
-    const extensions = (Array.isArray(rawProfileExtensions) ? rawProfileExtensions : [])
-      .filter((e: any) => e?.disabled !== true)
-      .filter((e: any) => !disabledIds.includes(e?.identifier?.id));
+    parentDisabledIds.push(...disabledIds);
+    // 传入全部扩展（含 disabled: true）到 mergeInheritedExtensions，
+    // 确保子级中 own 的扩展能被正确转为 inherited
+    const extensions = Array.isArray(rawProfileExtensions) ? rawProfileExtensions : [];
     parentProfiles.push({
       profileName,
       extensions,
@@ -1014,13 +1015,40 @@ async function collectInheritedExtensions(
 
   // 5.5 后处理: 从 result.merged 中移除 optedOutList 中但被 mergeInheritedExtensions
   //     误加为 inherited 的条目
-  const finalMerged = result.merged.map((ext) => {
+  let finalMerged = result.merged.map((ext) => {
     const id = ext?.identifier?.id;
     if (id && optedOutList!.includes(id) && isInheritedExtension(ext)) {
       return markExtensionAsOptedOut(id, ext) as typeof ext;
     }
     return ext;
   });
+
+  // 5.6 后处理: 移除父级已禁用的扩展（仅影响 inherited 的）
+  //     disabled:true 或 state.vscdb 中标记为禁用的扩展不会被继承
+  const disabledIdSet = new Set(parentDisabledIds);
+  for (const ext of parentProfiles.flatMap(p => p.extensions)) {
+    const id = ext?.identifier?.id;
+    if (id && ext?.disabled === true) {
+      disabledIdSet.add(id);
+    }
+  }
+  if (disabledIdSet.size > 0) {
+    const beforeCount = finalMerged.length;
+    finalMerged = finalMerged.filter((ext) => {
+      const id = ext?.identifier?.id;
+      if (id && disabledIdSet.has(id) && isInheritedExtension(ext)) {
+        return false;
+      }
+      // 如果父级禁用了但子级是 own — 保留不受影响
+      return true;
+    });
+    const removedCount = beforeCount - finalMerged.length;
+    if (removedCount > 0) {
+      console.info(
+        `Removed ${removedCount} inherited extension(s) that are disabled in parent profiles.`,
+      );
+    }
+  }
 
   // 6. 将 parentNameMap 存入 globalState（用于 extensionMarkers 备份）
   const finalParentNameMap = { ...result.parentNameMap };
