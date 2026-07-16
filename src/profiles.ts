@@ -286,13 +286,21 @@ export async function writeParentProfiles(
   const options: import("jsonc-parser").ModificationOptions = {
     formattingOptions: { insertSpaces: true, tabSize: 4 },
   };
+
+  // 分两步写入, 避免 inheritProfile 不存在时 modify 产生重叠 edits
+  const settings = parseJSONC(raw) as Record<string, any>;
+  let intermediate = raw;
+  if (!settings?.inheritProfile) {
+    const edits = modify(raw, ["inheritProfile"], {}, options);
+    intermediate = applyEdits(raw, edits);
+  }
   const edits = modify(
-    raw,
+    intermediate,
     ["inheritProfile", "parents"],
     parentNames,
     options,
   );
-  const updated = applyEdits(raw, edits);
+  const updated = applyEdits(intermediate, edits);
   await writeManagedFile(settingsPath, updated);
   invalidateInheritanceGraph();
   console.info(
