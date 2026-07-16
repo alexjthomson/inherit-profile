@@ -1,15 +1,15 @@
 # VS Code Profile 体系 · 完整架构文档
 
-> 最后更新: 2026-07-09
+> 最后更新: 2026-07-17
 
 ---
 
 ## 一、整体架构
 
 ```
-Base（通用底座·15个）
-├── Base->Dev（通用开发工具·52个）
-└── Base->Writing（文字写作·15个，自动继承 Base）
+Base（通用底座·17个）
+├── Base->Dev（通用开发工具·55个）
+└── Base->Writing（文字写作·17个，自动继承 Base）
 
 Test（未归类文档工具，3个，仅文档规划）
 ```
@@ -18,7 +18,7 @@ Test（未归类文档工具，3个，仅文档规划）
 
 ## 二、Profile 明细
 
-### 2.1 Base · 通用底座（15 个扩展）
+### 2.1 Base · 通用底座（17 个扩展）
 
 **UUID:** `10a9f58d`
 
@@ -28,14 +28,34 @@ Test（未归类文档工具，3个，仅文档规划）
 
 ```json
 {
+    "inheritProfile.runOnStartup": true,
     "inheritProfile.runOnProfileChange": true,
+    "git.autofetch": true,
     "gitlens.ai.model": "vscode",
     "gitlens.ai.vscode.model": "opencode-go:minimax",
     "diffEditor.renderSideBySide": false,
+    "chat.tools.urls.autoApprove": {
+        "https://code.visualstudio.com": true,
+        "https://github.com/microsoft/vscode/wiki/*": true,
+        "https://github.com": {
+            "approveRequest": false,
+            "approveResponse": true
+        },
+        "https://opencode.ai": true
+    },
     "chat.agent.maxRequests": 300,
     "opencodego.enableZenFreeModels": true,
     "explorer.confirmDelete": false,
-    "chat.utilitySmallModel": "opencodego/deepseek-v4-flash"
+    "chat.utilitySmallModel": "opencodego/deepseek-v4-flash",
+    "chat.viewSessions.orientation": "stacked",
+    "chat.mcp.gallery.enabled": true,
+    "terminal.integrated.commandsToSkipShell": [
+        "kilo-code.new.agentManagerOpen",
+        "kilo-code.new.agentManager.showTerminal"
+    ],
+    "opencodego.commitIncludeCommitDiff": true,
+    "opencodego.temperature": 0,
+    "opencodego.top_p": 0
 }
 ```
 
@@ -65,7 +85,7 @@ Test（未归类文档工具，3个，仅文档规划）
 
 ---
 
-### 2.2 Base->Dev · 通用开发（52 个扩展，含继承自 Base）
+### 2.2 Base->Dev · 通用开发（55 个扩展，含继承自 Base）
 
 **UUID:** `-367578e4`
 
@@ -80,8 +100,10 @@ Test（未归类文档工具，3个，仅文档规划）
     "inheritProfile.runOnProfileChange": true,
     "inheritProfile.showMessages": false,
     "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.formatOnSave": true,
     "gitlens.ai.model": "vscode",
-    "gitlens.ai.vscode.model": "copilotcli:"
+    "gitlens.ai.vscode.model": "copilotcli:",
+    "git.autofetch": true
 }
 ```
 
@@ -129,8 +151,9 @@ Test（未归类文档工具，3个，仅文档规划）
 | `barbosshack.crates-io`                  | crates-io                  | Rust Crate 管理   |
 | `gitlab.gitlab-workflow`                 | GitLab Workflow            | GitLab 集成       |
 | `ms-dotnettools.vscode-dotnet-runtime`   | .NET Runtime               | .NET 运行时       |
+| `ms-azuretools.vscode-containers`        | Dev Containers             | 容器开发环境      |
 
-### 2.4 Base->Writing · 文字写作（15 个扩展，含继承自 Base，由 inherit-profile-plus 自动管理）
+### 2.4 Base->Writing · 文字写作（17 个扩展，含继承自 Base，由 inherit-profile-plus 自动管理）
 
 **UUID:** `-332dce57`
 
@@ -143,6 +166,7 @@ Test（未归类文档工具，3个，仅文档规划）
     "inheritProfile.parents": ["Base"],
     "inheritProfile.runOnStartup": true,
     "inheritProfile.runOnProfileChange": true,
+    "inheritProfile.showMessages": false,
     "git.autofetch": true
 }
 ```
@@ -151,7 +175,7 @@ Test（未归类文档工具，3个，仅文档规划）
 
 **扩展列表:**
 
-与 **Base** 完全一致（15 个），由 `inherit-profile-plus` 在启动/切 Profile 时自动同步。无需手动维护。
+与 **Base** 完全一致（17 个），由 `inherit-profile-plus` 在启动/切 Profile 时自动同步。无需手动维护。
 
 ---
 
@@ -161,7 +185,7 @@ Test（未归类文档工具，3个，仅文档规划）
 
 **UUID:** `__default__profile__`（特殊，无独立目录）
 
-**Settings**（12 项，仅保留语言相关 + 扩展专用）:
+**Settings**（实际继承 Base 后包含 inherited 块，以下仅列出 Default 自身设置）:
 
 ```json
 {
@@ -176,7 +200,13 @@ Test（未归类文档工具，3个，仅文档规划）
   "vscode-edge-devtools.webhintInstallNotification": true,
   "wikitext.autoLogin": "Never",
   "lldb.dbgconfig": {},
-  "window.newWindowProfile": "Base->Dev"
+  "window.newWindowProfile": "Base",
+  "git.autofetch": true,
+  "explorer.confirmDelete": false,
+  "gitlens.ai.model": "vscode",
+  "gitlens.ai.vscode.model": "copilot:gpt-4o-mini",
+  "chat.mcp.gallery.enabled": true,
+  "task.allowAutomaticTasks": "on"
 }
 ```
 
@@ -186,7 +216,7 @@ Test（未归类文档工具，3个，仅文档规划）
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | 🔀 Git        | `eamodio.gitlens`, `github.codespaces`, `github.vscode-pull-request-github`                                                                                                                                                          |
 | 🌏 汉化       | `ms-ceintl.vscode-language-pack-zh-hans`                                                                                                                                                                                             |
-| 🎨 美化       | `vscode-icons-team.vscode-icons`                                                                                                                                                                          |
+| 🎨 美化       | `vscode-icons-team.vscode-icons`, `maxdavidwow.remix-light`                                                                                                                                                                          |
 | 🔌 远程       | `ms-vscode-remote.remote-ssh`, `ms-vscode.remote-explorer`, `ms-vscode-remote.remote-ssh-edit`                                                                                                                                       |
 | 📝 Markdown   | `yzhang.markdown-all-in-one`, `shd101wyy.markdown-preview-enhanced`, `davidanson.vscode-markdownlint`                                                                                                                                |
 | 🖼️ 工具       | `kisstkondoros.vscode-gutter-preview`, `mushan.vscode-paste-image`                                                                                                                                                                   |
@@ -194,16 +224,18 @@ Test（未归类文档工具，3个，仅文档规划）
 | 🐹 Go         | `golang.go`                                                                                                                                                                                                                          |
 | ☕ Java       | `redhat.java`, `vscjava.vscode-java-debug`, `vscjava.vscode-java-dependency`, `vscjava.vscode-java-pack`, `vscjava.vscode-java-test`, `vscjava.vscode-maven`, `vscjava.vscode-gradle`                                                |
 | 🌐 前端       | `ecmel.vscode-html-css`, `xabikos.javascriptsnippets`, `formulahendry.auto-rename-tag`, `pranaygp.vscode-css-peek`, `sporiley.css-auto-prefix`, `vincaslt.highlight-matching-tag`, `esbenp.prettier-vscode`, `ritwickdey.liveserver` |
-| 🔧 工具       | `foxundermoon.shell-format`, `vadimcn.vscode-lldb`, `tamasfe.even-better-toml`, `redhat.vscode-xml`, `sergey-tihon.openxml-explorer`                                                                                                 |
+| 🔧 工具       | `foxundermoon.shell-format`, `vadimcn.vscode-lldb`, `tamasfe.even-better-toml`, `redhat.vscode-xml`, `sergey-tihon.openxml-explorer`, `fill-labs.dependi`, `usernamehw.errorlens`, `gerrnperl.outline-map`, `barbosshack.crates-io`, `luotianyiismywife.inherit-profile-plus` |
 | 🔥 调试       | `firefox-devtools.vscode-firefox-debug`, `ms-edgedevtools.vscode-edge-devtools`                                                                                                                                                      |
 | 🤖 Git 平台   | `gitlab.gitlab-workflow`                                                                                                                                                                                                             |
 | 📄 文档       | `rowewilsonfrederiskholme.wikitext`, `yuenm18.ooxml-viewer`                                                                                                                                                                          |
 | ⚙️ 其他       | `ms-dotnettools.vscode-dotnet-runtime`                                                                                                                                                                                               |
 | 🖥️ PowerShell | `ms-vscode.powershell`                                                                                                                                                                                                              |
+| 🦀 Rust       | `rust-lang.rust-analyzer`                                                                                                                                                                                                           |
+| 🤖 Copilot 模型 | `vizards.deepseek-v4-for-copilot`, `denizhandaklr.glm-chat-provider`, `denizhandaklr.kimi-lm-provider`, `denizhandaklr.minimax-vscode`, `denizhandaklr.opencode-go-for-copilot`                                                    |
 
 ---
 
-### 2.6 未归类扩展（3 个 · 未加入任何自定义 Profile）
+### 2.6 未归类扩展（5 个 · 未加入任何自定义 Profile）
 
 **说明:** 以下扩展全局已安装，但未加入 Base/Dev/Writing 任一自定义 Profile。仅在 Default Profile 中可用。
 
@@ -212,6 +244,8 @@ Test（未归类文档工具，3个，仅文档规划）
 | `rowewilsonfrederiskholme.wikitext` | WikiText | Wiki 文档编辑 |
 | `sergey-tihon.openxml-explorer` | OpenXML Explorer | Office XML 查看器 |
 | `yuenm18.ooxml-viewer` | OOXML Viewer | OOXML 文件查看 |
+| `denizhandaklr.opencode-go-for-copilot` | OpenCode Go (Alt) | Copilot 模型（备用） |
+| `maxdavidwow.remix-light` | Remix Light | 浅色主题 |
 
 ---
 
@@ -219,9 +253,9 @@ Test（未归类文档工具，3个，仅文档规划）
 
 ```mermaid
 graph TB
-    Base["Base (15个)"]
-    Dev["Base->Dev (52个)<br/>prettier, errorlens, dependi<br/>+Python, Go, Java, 前端<br/>+lldb, xml, shell, debug<br/>+PowerShell, Rust, .NET, GitLab"]
-    Writing["Base->Writing (15个)<br/>自动继承 Base"]
+    Base["Base (17个)"]
+    Dev["Base->Dev (55个)<br/>prettier, errorlens, dependi<br/>+Python, Go, Java, 前端<br/>+lldb, xml, shell, debug<br/>+PowerShell, Rust, .NET, GitLab<br/>+Dev Containers"]
+    Writing["Base->Writing (17个)<br/>自动继承 Base"]
 
     Base -->|inherit| Dev
     Base -->|inherit| Writing

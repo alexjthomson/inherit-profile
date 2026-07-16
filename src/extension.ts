@@ -25,6 +25,7 @@
  *   - inherit-profile.applyInheritanceToCurrentProfile
  *   - inherit-profile.removeInheritedSettingsFromCurrentProfile
  *   - inherit-profile.forceReconcile
+ *   - inherit-profile.showInheritanceTree
  *
  * 函数列表（Functions）:
  *   - activate(context)              [export][async] 扩展激活入口：注册命令、恢复标记、启动监听

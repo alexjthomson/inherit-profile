@@ -49,12 +49,12 @@
     "commands": [
       {
         "command": "inherit-profile.applyInheritanceToCurrentProfile",
-        "title": "Apply Profile Inheritance (Current Profile)",
+        "title": "Inherit Profile: Apply Inheritance",
         "icon": "combine"
       },
       {
         "command": "inherit-profile.removeInheritedSettingsFromCurrentProfile",
-        "title": "Remove Inherited Settings (Current Profile)",
+        "title": "Inherit Profile: Remove Inherited Settings",
         "icon": "clear-all"
       },
       {
