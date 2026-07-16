@@ -999,7 +999,7 @@ async function collectInheritedExtensions(
       path.join(profileDirectory, "extensions.json")
     );
     // 收集禁用扩展 ID（从 SQLite state.vscdb）用于后续过滤
-    const disabledIds = getDisabledExtensions(profileDirectory);
+    const disabledIds = await getDisabledExtensions(profileDirectory);
     parentDisabledIds.push(...disabledIds);
     // 传入全部扩展（含 disabled: true）到 mergeInheritedExtensions，
     // 确保子级中 own 的扩展能被正确转为 inherited
