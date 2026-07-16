@@ -35,7 +35,7 @@
 
 import * as vscode from "vscode";
 import * as path from "path";
-import { updateCurrentProfileInheritance, removeCurrentProfileInheritedSettings, invalidateInheritanceGraph, isManagedFileSelfWrite, writeManagedFile, readJSON, getCurrentProfileDetails } from "./profiles";
+import { updateCurrentProfileInheritance, removeCurrentProfileInheritedSettings, invalidateInheritanceGraph, isManagedFileSelfWrite, writeManagedFile, readJSON, getCurrentProfileDetails, showInheritanceTree } from "./profiles";
 import { updateInheritedSettingsOnProfileChange, registerCurrentProfileSaveWatcher, registerParentProfileSaveWatcher } from "./profileWatchers";
 
 export async function activate(context: vscode.ExtensionContext) {
@@ -53,7 +53,15 @@ export async function activate(context: vscode.ExtensionContext) {
     )
   );
 
-  // 2. 新增: 强制全量对账命令 (重建反向索引)
+  // 2. 新增: 展示继承树命令
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      "inherit-profile.showInheritanceTree",
+      () => showInheritanceTree(context),
+    )
+  );
+
+  // 3. 新增: 强制全量对账命令 (重建反向索引)
   context.subscriptions.push(
     vscode.commands.registerCommand("inherit-profile.forceReconcile", async () => {
       invalidateInheritanceGraph();

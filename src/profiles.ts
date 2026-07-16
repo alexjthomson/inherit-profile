@@ -224,7 +224,7 @@ function buildInheritanceGraph(
  * 获取或构建缓存的反向索引。
  * 如果缓存已失效（profiles 变动或 mtime 变化）, 自动重建。
  */
-function getInheritanceGraph(
+export function getInheritanceGraph(
   profiles: Readonly<Record<string, string>>,
 ): Record<string, string[]> {
   if (!inheritanceGraphCache || !isGraphCacheValid(profiles)) {
@@ -1137,4 +1137,58 @@ export async function removeCurrentProfileInheritedSettings(
       "Inherited settings removed from current profile!",
     );
   }
+}
+
+// ---------------------------------------------------------------------------
+// Inheritance Tree 展示
+// ---------------------------------------------------------------------------
+
+/**
+ * 在 OutputChannel 中展示所有 Profile 的继承树形图。
+ * 当前 Profile 前带 "▶ " 标记。
+ */
+export async function showInheritanceTree(
+  context: vscode.ExtensionContext,
+): Promise<void> {
+  const { currentProfileName, profiles } =
+    await getCurrentProfileDetails(context);
+  const graph = getInheritanceGraph(profiles);
+
+  // 收集所有出现在 children 中的 profile
+  const allChildren = new Set<string>();
+  for (const children of Object.values(graph)) {
+    for (const c of children) {
+      allChildren.add(c);
+    }
+  }
+
+  // 根节点 = 所有 profile 中不是任何人的孩子的
+  const roots = Object.keys(profiles).filter(
+    (p) => !allChildren.has(p),
+  );
+
+  const lines: string[] = [];
+  lines.push(
+    `Profile Inheritance Tree  (current: ${currentProfileName})`,
+  );
+  lines.push("─".repeat(50));
+
+  function render(node: string, depth: number) {
+    const indent = "  ".repeat(depth);
+    const marker = node === currentProfileName ? "\u25b6 " : "  ";
+    lines.push(`${indent}${marker}${node}`);
+    const children = graph[node] ?? [];
+    for (const child of children) {
+      render(child, depth + 1);
+    }
+  }
+
+  for (const root of roots) {
+    render(root, 0);
+  }
+
+  const channel = vscode.window.createOutputChannel("InheritanceTree");
+  channel.clear();
+  channel.appendLine(lines.join("\n"));
+  channel.show(true);
 }
