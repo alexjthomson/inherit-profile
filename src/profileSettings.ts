@@ -200,9 +200,11 @@ export function sortSettings(settings: Record<string, any>): Record<string, any>
 export function stripManagedProfileSettings<T>(
   settings: Record<string, T>,
 ): Record<string, T> {
-  const strippedSettings = { ...settings };
-  delete strippedSettings[INHERITED_SETTINGS_INSERTION_BOUNDARY_KEY];
-  return strippedSettings;
+  // 过滤所有 inheritProfile.* 私有键, 防止泄漏到子级 profile
+  // 包括: _insertionBoundary, _originallyOwnExtensions, optedOutExtensions 等
+  return Object.fromEntries(
+    Object.entries(settings).filter(([key]) => !key.startsWith("inheritProfile."))
+  );
 }
 
 /**
