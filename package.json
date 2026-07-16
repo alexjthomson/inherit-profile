@@ -56,6 +56,11 @@
         "command": "inherit-profile.removeInheritedSettingsFromCurrentProfile",
         "title": "Remove Inherited Settings (Current Profile)",
         "icon": "clear-all"
+      },
+      {
+        "command": "inherit-profile.forceReconcile",
+        "title": "Inherit Profile: Force Full Reconciliation",
+        "icon": "combine"
       }
     ],
     "configuration": {
@@ -83,6 +88,21 @@
           "type": "boolean",
           "default": false,
           "description": "Shows a message when settings are inherited or removed."
+        },
+        "inheritProfile.inheritExtensions": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether to inherit extensions from parent profiles."
+        },
+        "inheritProfile.runOnCurrentProfileSave": {
+          "type": "boolean",
+          "default": true,
+          "description": "Updates the inherited settings when the current profile's settings.json is saved."
+        },
+        "inheritProfile.runOnParentProfileSave": {
+          "type": "boolean",
+          "default": true,
+          "description": "Updates the inherited settings when a parent profile's settings.json is saved."
         },
         "inheritProfile._insertionBoundary": {
           "type": "boolean",

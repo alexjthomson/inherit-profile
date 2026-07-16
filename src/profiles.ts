@@ -14,55 +14,72 @@
  *      a. 读取父 Profile 和子 Profile 的 settings.json
  *      b. 用 subtractSettings() 剔除子中已有的 key（子覆盖父）
  *      c. 将缺失的父设置写入 inherited 标记块（带起始/结束标记）
- *   4. 扩展继承：
- *      a. 读取父 Profile 的 extensions.json
- *      b. 用 collectInheritedExtensions() 合并父扩展到子
- *      c. 从父继承的扩展会被标记 metadata.inheritedFromProfile
- *      d. 子已显式声明的扩展不会被覆盖（子覆盖父）
- *      e. 父删除扩展后，子中标记了 inheritedFromProfile 的对应扩展会被自动清理
+ *   4. 扩展继承（7步全量对账）：
+ *      a. 读取 settings.json 元数据（originallyOwn, optedOut）
+ *      b. 转换旧标记格式（inheritedFromProfile → inheritProfile.inherited）
+ *      c. 注入 optedOut 标记
+ *      d. 一致性校验（settings.json 列表 ↔ extensions.json 标记）
+ *      e. 收集父级扩展
+ *      f. 通过 mergeInheritedExtensions 全量对账
+ *      g. 统计真实新增/移除
+ *   5. 反向索引 + 级联触发：
+ *      - 建立 parent→children 映射
+ *      - 当父 Profile 变更时，仅同步其后代
+ *      - 缓存带 mtime 校验，自动失效
  *
  * 依赖关系（Dependencies）:
- *   - import { ... } from "./profileSettings"
- *     → 使用其 JSONC 操作工具函数（flatten/merge/subtract/build block 等）
- *   - vscode 模块 → 用于获取配置、显示消息等
- *   - fs/promises + path → 读写文件
- *   - jsonc-parser → 解析带注释的 JSON 文件
+ *   - import { ... } from "./profileSettings" — JSONC 工具函数
+ *   - import { SelfWriteTracker } from "./selfWriteTracker" — 自写跟踪
+ *   - vscode 模块 — 配置、消息通知
+ *   - fs/promises + path — 文件读写
+ *   - jsonc-parser — 解析带注释的 JSON
  *
  * 对外提供的 API（Exports）:
- *   - readJSON(filePath)                                        读取 JSONC 文件
- *   - updateCurrentProfileInheritance(context)                   **主要入口**：完整继承同步
- *   - removeCurrentProfileInheritedSettings(context)             清除当前 Profile 的继承内容
- *   - updateInheritedSettingsOnProfileChange(context)            监听 Profile 切换
+ *   - readJSON(filePath)                                    [async] 读取 JSONC 文件
+ *   - getGlobalStoragePath(context)                         获取 storage.json 路径
+ *   - getCurrentProfileName(context)                        [async] 获取当前 Profile 名称
+ *   - getProfileMap(context)                                [async] Profile 名称→目录映射
+ *   - getCurrentProfileDetails(context)                     [async] 当前 Profile 详细信息
+ *   - readRawSettingsFile(settingsPath)                     [async] 读取原始 settings.json
+ *   - updateCurrentProfileInheritance(context, trigger?)    [async] **主要入口**：完整继承同步
+ *   - removeCurrentProfileInheritedSettings(context)        [async] 清除当前 Profile 的继承内容
+ *   - writeManagedFile(filePath, content)                   [async] 写入文件并记录自写
+ *   - isManagedFileSelfWrite(filePath, content)             判断是否为自身的写入
+ *   - invalidateInheritanceGraph()                          使反向索引缓存失效
  *
  * 内部函数（Internal）:
- *   - getUserDirectory(context)                                  获取用户目录
- *   - getGlobalStoragePath(context)                              获取 storage.json 路径
- *   - readGlobalStorage(context)                                 读取全局存储
- *   - getCustomProfiles(context)                                 获取自定义 Profile 列表
- *   - findByKeyValuePair(input, key, value)                      在嵌套对象中递归搜索
- *   - getCurrentProfileName(context)                             获取当前 Profile 名称
- *   - getProfileMap(context)                                     Profile 名称→目录 映射
- *   - getCurrentProfileDetails(context)                          当前 Profile 详细信息
- *   - getProfileSettings(context, profiles)                      收集指定 Profile 的设置
- *   - getCurrentProfileSettings(context)                         当前 Profile 自身设置
- *   - getInheritedSettings(context)                              计算应继承的设置（父-子）
- *   - removeInheritedSettingsFromFile(settingsPath)              从文件移除 inherited 块
- *   - writeInheritedSettings(settingsPath, flattened)            写入 inherited 设置块
- *   - readRawSettingsFile(settingsPath)                          读取原始 settings.json
- *   - applyInheritedSettings(context)                            执行继承（设置+扩展）
- *   - collectInheritedExtensions(currentExtensions, profiles)    合并父扩展（标记继承来源）
+ *   - getUserDirectory(context)                              获取用户目录
+ *   - getGlobalStoragePath(context)                          获取 storage.json 路径
+ *   - readGlobalStorage(context)                             [async] 读取全局存储
+ *   - getCustomProfiles(context)                             [async] 获取自定义 Profile 列表
+ *   - findByKeyValuePair(input, key, value)                  在嵌套对象中递归搜索
+ *   - getProfileSettings(context, profiles)                  [async] 收集指定 Profile 的拍平设置
+ *   - getCurrentProfileSettings(context)                     [async] 当前 Profile 自身设置
+ *   - getInheritedSettings(context)                          [async] 计算应继承的设置（父−子）
+ *   - removeInheritedSettingsFromFile(settingsPath)          [async] 从文件移除 inherited 标记块
+ *   - writeInheritedSettings(settingsPath, flattened)        [async] 写入 inherited 设置块
+ *   - applyInheritedSettings(context)                        [async] 执行继承（设置+扩展+备份）
+ *   - collectInheritedExtensions(context, ...)               [async] 7步全量对账扩展继承
+ *   - buildInheritanceGraph(profiles)                        构建反向索引
+ *   - isGraphCacheValid(profiles)                            检查反向索引缓存有效性
+ *   - getInheritanceGraph(profiles)                          获取或构建缓存的反向索引
+ *   - getDescendants(root, graph)                            BFS 获取所有后代
  *
  * 配置项（Config keys under "inheritProfile"）:
- *   - parents: string[] — 父 Profile 名称列表（如 ["Base"]）
+ *   - parents: string[] — 父 Profile 名称列表
  *   - runOnStartup: boolean — 启动时自动同步
  *   - runOnProfileChange: boolean — 切换 Profile 时自动同步
+ *   - runOnCurrentProfileSave: boolean — 当前 Profile 保存时同步
+ *   - runOnParentProfileSave: boolean — 父级保存时同步
+ *   - inheritExtensions: boolean — 是否继承扩展
  *   - showMessages: boolean — 是否显示通知消息
  */
 
 import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs/promises";
-import { parse } from "jsonc-parser";
+import { statSync, readFileSync } from "fs";
+import { parse as parseJSONC } from "jsonc-parser";
 import {
   buildInheritedSettingsBlock,
   findTabValue,
@@ -79,6 +96,12 @@ import {
   stripInheritedExtensions,
   stripManagedProfileSettings,
   subtractSettings,
+  convertOldMarkers,
+  isInheritedExtension,
+  isOptedOutExtension,
+  markExtensionAsInherited,
+  markExtensionAsOptedOut,
+  INHERITED_PROFILE_META_KEY,
 } from "./profileSettings";
 import { SelfWriteTracker } from "./selfWriteTracker";
 
@@ -103,6 +126,9 @@ async function writeManagedFile(
   await fs.writeFile(filePath, content, "utf8");
 }
 
+// writeManagedFile 需要 export, 供 extension.ts 的 checkAndRestoreMarkers 调用
+export { writeManagedFile };
+
 /**
  * Reports whether the most recent write to `filePath` (via
  * {@link writeManagedFile}) wrote exactly `content`, meaning a file watcher
@@ -118,6 +144,137 @@ export function isManagedFileSelfWrite(
   return selfWriteTracker.isSelfWrite(filePath, content);
 }
 
+// ---------------------------------------------------------------------------
+// 反向索引 + 级联触发
+// ---------------------------------------------------------------------------
+
+// 内存缓存: parent → children[]
+let inheritanceGraphCache: Record<string, string[]> | undefined;
+// 缓存时的 profiles 快照（用于检测 profile 新增/删除）
+let cachedProfilesSnapshot: Record<string, string> | undefined;
+// 缓存时各 profile 目录的 mtime 签名, 用于检测文件变更
+let cachedProfileMtimes: Record<string, number> | undefined;
+
+/**
+ * 检查缓存是否仍然有效。
+ * 如 profiles 列表有变动或任一 profile 目录的 mtime 变化, 缓存失效。
+ */
+function isGraphCacheValid(
+  profiles: Readonly<Record<string, string>>,
+): boolean {
+  if (!inheritanceGraphCache || !cachedProfilesSnapshot || !cachedProfileMtimes) {
+    return false;
+  }
+  // 检查 profile 列表是否一致
+  const currentKeys = Object.keys(profiles).sort().join(",");
+  const cachedKeys = Object.keys(cachedProfilesSnapshot).sort().join(",");
+  if (currentKeys !== cachedKeys) return false;
+  // 检查每个 profile 目录的 mtime
+  for (const [name, dir] of Object.entries(profiles)) {
+    try {
+      const stat = statSync(dir);
+      if (stat.mtimeMs !== cachedProfileMtimes[name]) return false;
+    } catch {
+      return false; // 目录不存在或无法访问
+    }
+  }
+  return true;
+}
+
+/**
+ * 构建继承关系反向索引。
+ * 扫描所有 profile 的 settings.json 中的 inheritProfile.parents 来建立。
+ * 同时记录 mtime 签名以供后续缓存校验。
+ */
+function buildInheritanceGraph(
+  profiles: Readonly<Record<string, string>>,
+): Record<string, string[]> {
+  const graph: Record<string, string[]> = {};
+  const mtimes: Record<string, number> = {};
+  for (const [profileName, profileDir] of Object.entries(profiles)) {
+    const settingsPath = path.join(profileDir, "settings.json");
+    try {
+      // 记录 mtime
+      const dirStat = statSync(profileDir);
+      mtimes[profileName] = dirStat.mtimeMs;
+
+      const raw = readFileSync(settingsPath, "utf8");
+      const settings = parseJSONC(raw) as Record<string, any>;
+      const parents = settings?.inheritProfile?.parents ?? [];
+      for (const parent of parents) {
+        if (profiles[parent]) {
+          if (!graph[parent]) graph[parent] = [];
+          if (!graph[parent].includes(profileName)) {
+            graph[parent].push(profileName);
+          }
+        }
+      }
+    } catch (err) {
+      // 忽略无法读取的 settings.json (如新 profile 尚无配置)
+      // 但记录 warn 以便调试
+      console.warn(`buildInheritanceGraph: skipping \`${profileName}\` (${(err as Error)?.message ?? err})`);
+    }
+  }
+  cachedProfileMtimes = mtimes;
+  cachedProfilesSnapshot = { ...profiles };
+  return graph;
+}
+
+/**
+ * 获取或构建缓存的反向索引。
+ * 如果缓存已失效（profiles 变动或 mtime 变化）, 自动重建。
+ */
+function getInheritanceGraph(
+  profiles: Readonly<Record<string, string>>,
+): Record<string, string[]> {
+  if (!inheritanceGraphCache || !isGraphCacheValid(profiles)) {
+    inheritanceGraphCache = buildInheritanceGraph(profiles);
+  }
+  return inheritanceGraphCache;
+}
+
+/**
+ * BFS 获取所有后代（使用 Set 去重, O(1) 查重避免重复入队）。
+ */
+function getDescendants(
+  root: string,
+  graph: Record<string, string[]>,
+): string[] {
+  const result: string[] = [];
+  const visited = new Set<string>([root]);
+  const queue = [root];
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    const children = graph[current] ?? [];
+    for (const child of children) {
+      if (!visited.has(child)) {
+        visited.add(child);
+        result.push(child);
+        queue.push(child);
+      }
+    }
+  }
+  return result;
+}
+
+/**
+ * 使反向索引缓存失效（配置变更时调用）。
+ * 注意: 日常使用中缓存由 `getInheritanceGraph` 的 `isGraphCacheValid`
+ * 自动校验（检查 profiles 列表和 mtime）, 无需手动失效。
+ * 但父级列表变更（`inheritProfile.parents` 配置变化）时仍需手动调用,
+ * 因为继承关系拓扑变了, mtime 检测无法感知。
+ */
+function invalidateInheritanceGraph(): void {
+  inheritanceGraphCache = undefined;
+  cachedProfilesSnapshot = undefined;
+  cachedProfileMtimes = undefined;
+}
+
+// 注意: invalidateInheritanceGraph 需要 export, 供 extension.ts 和 profileWatchers.ts 调用
+export { invalidateInheritanceGraph };
+
+// ---------------------------------------------------------------------------
+
 /**
  * Reads JSONC (JSON with comments).
  * @param filePath Path to the JSON/JSONC file.
@@ -126,7 +283,7 @@ export function isManagedFileSelfWrite(
 export async function readJSON(filePath: string): Promise<any> {
   try {
     const raw = await fs.readFile(filePath, "utf8");
-    return parse(raw); // handles // and /* */ comments
+    return parseJSONC(raw); // handles // and /* */ comments
   } catch (error) {
     console.error(`Failed to read JSONC at ${filePath}:`, error);
     return {};
@@ -605,83 +762,298 @@ async function applyInheritedSettings(
     ? parsedCurrentExtensions
     : [];
   // Collect and write inherited extensions
-  const finalExtensions = await collectInheritedExtensions(
+  const extResult = await collectInheritedExtensions(
+    context,
     currentExtensions,
+    currentProfileName,
     profiles,
   );
+  const finalExtensions = extResult.extensions;
   if (JSON.stringify(finalExtensions) !== JSON.stringify(currentExtensions)) {
     console.info(
       `Writing ${finalExtensions.length} extensions to \`${currentExtensionsPath}\`.`,
     );
-    await fs.writeFile(
+    await writeManagedFile(
       currentExtensionsPath,
       JSON.stringify(finalExtensions, null, 4) + "\n",
-      "utf8",
     );
   }
+
+  // 回写 _originallyOwnExtensions 和 optedOutExtensions 到 settings.json
+  const { originallyOwn, optedOut } = extResult;
+  if (originallyOwn.length > 0 || optedOut.length > 0) {
+    const rawSettings = await readRawSettingsFile(currentProfilePath);
+
+    const edits: import("jsonc-parser").Edit[] = [];
+    const options: import("jsonc-parser").ModificationOptions = {
+      formattingOptions: { insertSpaces: true, tabSize: 4 },
+    };
+
+    const { modify, applyEdits } = await import("jsonc-parser");
+
+    edits.push(
+      ...modify(rawSettings, ["inheritProfile._originallyOwnExtensions"], originallyOwn, options)
+    );
+    edits.push(
+      ...modify(rawSettings, ["inheritProfile.optedOutExtensions"], optedOut, options)
+    );
+
+    const updatedSettings = applyEdits(rawSettings, edits);
+    await writeManagedFile(currentProfilePath, updatedSettings);
+  }
+
+  // 备份当前 profile 的 extension 标记到 globalState，用于跨设备恢复
+  const existingBackup = context.globalState.get<Record<string, Record<string, string>>>(
+    "inheritProfile.extensionMarkers"
+  ) ?? {};
+  const existingMarkers = existingBackup[currentProfileName] ?? {};
+  const extensionMarkersBackup = { ...existingMarkers };
+  for (const ext of finalExtensions) {
+    const id = ext?.identifier?.id;
+    if (id && isInheritedExtension(ext) && !extensionMarkersBackup[id]) {
+      extensionMarkersBackup[id] = ""; // 理论不会走到这里，兜底
+    }
+  }
+  void context.globalState.update(
+    "inheritProfile.extensionMarkers",
+    {
+      ...existingBackup,
+      [currentProfileName]: extensionMarkersBackup,
+    }
+  );
 }
 
 /**
  * Collect extensions from parent profiles, merge with current profile extensions,
  * and mark inherited extensions in their metadata.
  *
+ * This is the full 7-step reconciliation process:
+ *   1. Read settings.json metadata (originallyOwn, optedOut)
+ *   2. Convert old markers (inheritedFromProfile → inheritProfile.inherited)
+ *   3. Inject optedOutList markers from settings.json
+ *   3.5 Consistency check: settings.json list ↔ extensions.json markers
+ *   4. Collect parent profiles' extensions
+ *   5. Full reconciliation via mergeInheritedExtensions
+ *   5.5 Post-process: catch opt-outs for extensions that didn't exist yet
+ *   6. Backup parentNameMap to globalState
+ *   7. Statistics & return
+ *
+ * @param context Extension context (for globalState access).
  * @param currentExtensions The parsed extensions array from the current profile.
+ * @param currentProfileName Name of the current profile.
  * @param profiles A map of profile names to their directory paths.
- * @returns The final extensions array to write back to the current profile.
+ * @param originallyOwn Optional pre-read originallyOwn list.
+ * @param optedOutList Optional pre-read optedOut list.
+ * @returns The merged result plus metadata for back-writing.
  */
 async function collectInheritedExtensions(
+  context: vscode.ExtensionContext,
   currentExtensions: any[],
+  currentProfileName: string,
   profiles: Record<string, string>,
-): Promise<any[]> {
-  // Remove any previously-inherited extensions from the current profile
-  // before recomputing which extensions should be inherited:
-  const filteredExtensions = stripInheritedExtensions(currentExtensions);
+  originallyOwn?: string[],
+  optedOutList?: string[],
+): Promise<{ extensions: any[]; originallyOwn: string[]; optedOut: string[] }> {
+  // 1. 如调用者未传入, 从 settings.json 读取元数据
+  const currentProfileDir = profiles[currentProfileName];
+  if (!currentProfileDir) {
+    console.error(
+      `Cannot collect inherited extensions: profile directory for \`${currentProfileName}\` not found.`
+    );
+    return { extensions: currentExtensions, originallyOwn: [], optedOut: [] };
+  }
 
-  // Get the list of parent profiles:
+  if (!originallyOwn || !optedOutList) {
+    const settingsPath = path.join(currentProfileDir, "settings.json");
+    const settings = await readJSON(settingsPath);
+    originallyOwn = settings?.inheritProfile?._originallyOwnExtensions ?? [];
+    optedOutList = settings?.inheritProfile?.optedOutExtensions ?? [];
+  }
+
+  // 2. 转换旧标记并持久化（仅首次需要）
+  const migrationDoneKey = "inheritProfile._markersConverted";
+  let markersAlreadyConverted = false;
+  if (context.globalState.get(migrationDoneKey)) {
+    markersAlreadyConverted = true;
+  }
+
+  // 始终通过 .map() 创建拷贝, 防止 step 3/3.5 的原位突变影响 caller 的数组
+  let converted: any[];
+  if (markersAlreadyConverted) {
+    // 浅拷贝: 每个条目的 metadata 是共享引用, 但 step 3 替换整个 metadata 对象
+    // (ext.metadata = {...}) 而非浅修改 (ext.metadata.foo = bar),
+    // 所以浅拷贝足够安全
+    converted = currentExtensions.map((e: any) => ({ ...e }));
+  } else {
+    converted = currentExtensions.map(convertOldMarkers);
+  }
+
+  if (!markersAlreadyConverted) {
+    const hasOldMarkers = currentExtensions.some(
+      (e: any) => e?.metadata?.inheritedFromProfile
+    );
+    if (hasOldMarkers) {
+      const extPath = path.join(profiles[currentProfileName], "extensions.json");
+      await writeManagedFile(
+        extPath,
+        JSON.stringify(converted, null, 4) + "\n",
+      );
+    }
+    void context.globalState.update(migrationDoneKey, true);
+  }
+
+  // 3. 将 optedOutList 中的跳过注入为 optedOut 标记
+  for (const ext of converted) {
+    const id = ext?.identifier?.id;
+    if (id && optedOutList!.includes(id) && !isOptedOutExtension(ext)) {
+      ext.metadata = {
+        ...(ext.metadata ?? {}),
+        inheritProfile: {
+          ...(ext.metadata?.inheritProfile ?? {}),
+          optedOut: true,
+        },
+      };
+    }
+  }
+
+  // 3.5 一致性校验: settings.json 的 optedOutExtensions 列表 ↔ extensions.json 的标记
+  const idsWithOrphanedOptOut = new Set<string>();
+  for (const ext of converted) {
+    const id = ext?.identifier?.id;
+    if (id && isOptedOutExtension(ext) && !optedOutList!.includes(id)) {
+      idsWithOrphanedOptOut.add(id);
+    }
+  }
+  if (idsWithOrphanedOptOut.size > 0) {
+    console.warn(
+      `Found ${idsWithOrphanedOptOut.size} extension(s) with orphaned optedOut marker ` +
+      `(not in optedOutExtensions list): ${[...idsWithOrphanedOptOut].join(", ")}. ` +
+      `Removing markers to sync with settings.json.`
+    );
+    for (const ext of converted) {
+      const id = ext?.identifier?.id;
+      if (id && idsWithOrphanedOptOut.has(id)) {
+        const { inheritProfile, ...restMeta } = ext.metadata ?? {};
+        const { optedOut: _, ...cleanProfile } = inheritProfile ?? {};
+        ext.metadata = Object.keys(cleanProfile).length > 0
+          ? ({ ...restMeta, inheritProfile: cleanProfile } as any)
+          : Object.keys(restMeta).length > 0
+            ? (restMeta as any)
+            : undefined;
+      }
+    }
+  }
+
+  // 4. 获取父级列表
   const config = vscode.workspace.getConfiguration("inheritProfile");
   const parentProfileNames = config.get<string[]>("parents", []);
-  console.info(
-    `Collecting extensions from ${parentProfileNames.length} parent profiles.`,
-  );
 
-  // Collect extensions declared by each of the parent profiles:
   const parentProfiles: { profileName: string; extensions: any[] }[] = [];
   for (const profileName of parentProfileNames) {
     const profileDirectory = profiles[profileName];
-    if (!profileDirectory) {
-      console.warn(
-        `Failed to collect extensions for profile ${profileName}: Profile does not exist.`,
-      );
-      continue;
-    }
-    const extensionsPath = path.join(profileDirectory, "extensions.json");
-    const rawProfileExtensions = await readJSON(extensionsPath);
-    const profileExtensions = Array.isArray(rawProfileExtensions)
-      ? rawProfileExtensions
-      : [];
-    console.info(
-      `Found ${profileExtensions.length} extensions in \`${profileName}\`.`,
+    if (!profileDirectory) continue;
+    const rawProfileExtensions = await readJSON(
+      path.join(profileDirectory, "extensions.json")
     );
-    parentProfiles.push({ profileName, extensions: profileExtensions });
+    parentProfiles.push({
+      profileName,
+      extensions: Array.isArray(rawProfileExtensions) ? rawProfileExtensions : [],
+    });
   }
 
-  const mergedExtensions = mergeInheritedExtensions(
-    filteredExtensions,
-    parentProfiles,
+  // 5. 全量对账
+  const result = mergeInheritedExtensions(converted, parentProfiles, originallyOwn);
+
+  // 5.5 后处理: 从 result.merged 中移除 optedOutList 中但被 mergeInheritedExtensions
+  //     误加为 inherited 的条目
+  const finalMerged = result.merged.map((ext) => {
+    const id = ext?.identifier?.id;
+    if (id && optedOutList!.includes(id) && isInheritedExtension(ext)) {
+      return markExtensionAsOptedOut(id, ext) as typeof ext;
+    }
+    return ext;
+  });
+
+  // 6. 将 parentNameMap 存入 globalState（用于 extensionMarkers 备份）
+  const finalParentNameMap = { ...result.parentNameMap };
+  for (const ext of finalMerged) {
+    const id = ext?.identifier?.id;
+    if (id && isOptedOutExtension(ext) && finalParentNameMap[id]) {
+      delete finalParentNameMap[id];
+    }
+  }
+
+  const existingBackup = context.globalState.get<Record<string, Record<string, string>>>(
+    "inheritProfile.extensionMarkers"
+  ) ?? {};
+  const mergedBackup = {
+    ...(existingBackup[currentProfileName] ?? {}),
+    ...finalParentNameMap,
+  };
+  if (Object.keys(finalParentNameMap).length > 0) {
+    await context.globalState.update("inheritProfile.extensionMarkers", {
+      ...existingBackup,
+      [currentProfileName]: mergedBackup,
+    });
+  }
+
+  // 7. 统计真实新增/移除
+  const prevInheritedIds = new Set(
+    converted
+      .filter((e: any) => isInheritedExtension(e))
+      .map((e: any) => e.identifier?.id)
   );
-  console.info(
-    `Inherited ${mergedExtensions.length - filteredExtensions.length} new extension(s) from parent profiles.`,
+  const newInheritedIds = new Set(
+    finalMerged
+      .filter((e: any) => isInheritedExtension(e))
+      .map((e: any) => e.identifier?.id)
   );
-  return mergedExtensions;
+  const addedCount = [...newInheritedIds].filter((id) => !prevInheritedIds.has(id)).length;
+  const removedCount = [...prevInheritedIds].filter((id) => !newInheritedIds.has(id)).length;
+
+  if (addedCount > 0 || removedCount > 0) {
+    console.info(
+      `Extensions reconciled for \`${currentProfileName}\`: ${addedCount} inherited, ${removedCount} uninherited.`
+    );
+  }
+
+  return {
+    extensions: finalMerged,
+    originallyOwn: result.originallyOwnExtensions,
+    optedOut: optedOutList ?? [],
+  };
 }
 
 /**
  * Updates the inherited settings for the current profile.
+ *
+ * When `triggerProfileName` is provided, only performs reconciliation if the
+ * current profile is a descendant of the trigger profile (cascading trigger).
+ * When omitted, always reconciles the current profile (full sync).
+ *
  * @param context Extension context.
+ * @param triggerProfileName Optional. If set, only reconcile if current
+ *   profile is a descendant of this profile (used for cascading triggers).
  */
 export async function updateCurrentProfileInheritance(
   context: vscode.ExtensionContext,
+  triggerProfileName?: string,
 ): Promise<void> {
+  if (triggerProfileName) {
+    // 级联触发: 仅对账触发 profile 的后代
+    const { currentProfileName, profiles } = await getCurrentProfileDetails(context);
+    const graph = getInheritanceGraph(profiles);
+    const descendants = getDescendants(triggerProfileName, graph);
+
+    if (!descendants.includes(currentProfileName)) {
+      console.info(
+        `Skipping reconciliation for ${currentProfileName}: ` +
+        `not a descendant of trigger ${triggerProfileName}.`
+      );
+      return;
+    }
+  }
+
   await applyInheritedSettings(context);
 
   const config = vscode.workspace.getConfiguration("inheritProfile");
@@ -715,21 +1087,46 @@ export async function removeCurrentProfileInheritedSettings(
     const currentExtensions = Array.isArray(parsedCurrentExtensions)
       ? parsedCurrentExtensions
       : [];
-    const filteredExtensions = stripInheritedExtensions(currentExtensions);
+    // 先转换旧标记, 统一格式后再 strip, 避免遗漏 inheritedFromProfile 旧格式
+    const converted = currentExtensions.map(convertOldMarkers);
+    const filteredExtensions = stripInheritedExtensions(converted);
     // Only write if there was a change to avoid unnecessary fs writes
-    if (filteredExtensions.length !== currentExtensions.length) {
+    if (filteredExtensions.length !== converted.length) {
       console.info(
-        `Removing ${currentExtensions.length - filteredExtensions.length} inherited extensions from \`${currentExtensionsPath}\`.`,
+        `Removing ${converted.length - filteredExtensions.length} inherited extensions from \`${currentExtensionsPath}\`.`,
       );
-      await fs.writeFile(
+      await writeManagedFile(
         currentExtensionsPath,
         JSON.stringify(filteredExtensions, null, 4) + "\n",
-        "utf8",
       );
     }
   } catch (err) {
     console.warn(
       `Failed to remove inherited extensions for profile \`${currentProfileName}\`:`,
+      err,
+    );
+  }
+
+  // 清理 settings.json 中的继承元数据键 (重置为空数组而非删除, 避免 jsonc-parser
+  // 处理 undefined value 的行为不确定)
+  try {
+    const settingsPath = path.join(currentProfileDirectory, "settings.json");
+    const raw = await readRawSettingsFile(settingsPath);
+    const { modify, applyEdits } = await import("jsonc-parser");
+    const options: import("jsonc-parser").ModificationOptions = {
+      formattingOptions: { insertSpaces: true, tabSize: 4 },
+    };
+    const edits: import("jsonc-parser").Edit[] = [];
+    for (const key of ["_originallyOwnExtensions", "optedOutExtensions"] as const) {
+      edits.push(...modify(raw, ["inheritProfile", key], [], options));
+    }
+    const updated = applyEdits(raw, edits);
+    if (updated !== raw) {
+      await writeManagedFile(settingsPath, updated);
+    }
+  } catch (err) {
+    console.warn(
+      `Failed to clean inheritance metadata from settings.json for \`${currentProfileName}\`:`,
       err,
     );
   }

@@ -1,4 +1,30 @@
 /**
+ * =============================================================================
+ * inherit-profile-plus — 防抖触发器工具
+ * =============================================================================
+ *
+ * 用途（Purpose）:
+ *   提供防抖（debounce）机制，用于合并短时间内连续触发的异步操作，
+ *   避免高频事件（如文件系统变更）导致重复执行。
+ *
+ * 工作机制（How it works）:
+ *   1. createDebouncedTrigger(action, delayMs) 创建一个防抖触发器函数
+ *   2. 每次调用触发器函数都会重置计时器，只有最后一次调用后才真正执行
+ *   3. 如果 action 正在执行中，后续触发会排队等待（最多一个排队）
+ *   4. 提供 dispose() 方法取消尚未执行的调度
+ *
+ * 依赖关系（Dependencies）:
+ *   无外部依赖，纯 TypeScript 实现
+ *
+ * 被谁使用（Used by）:
+ *   src/profileWatchers.ts — 文件变更的防抖处理
+ *
+ * 导出列表（Exports）:
+ *   - DebouncedTrigger (interface)     防抖触发器接口（函数 + dispose 方法）
+ *   - createDebouncedTrigger(action, delayMs?)  创建防抖触发器实例
+ */
+
+/**
  * A function returned by {@link createDebouncedTrigger} that schedules the
  * wrapped action to run after the configured delay. Calling it again before
  * the delay elapses resets the delay (i.e. calls are coalesced).
