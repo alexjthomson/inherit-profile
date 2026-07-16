@@ -80,6 +80,7 @@ import * as path from "path";
 import * as fs from "fs/promises";
 import { statSync, readFileSync } from "fs";
 import { parse as parseJSONC } from "jsonc-parser";
+import { getDisabledExtensions } from "./disabledExtensions";
 import {
   buildInheritedSettingsBlock,
   findTabValue,
@@ -996,9 +997,12 @@ async function collectInheritedExtensions(
     const rawProfileExtensions = await readJSON(
       path.join(profileDirectory, "extensions.json")
     );
-    // 过滤掉禁用的扩展 (disabled: true), 使父级禁用能传播到子级
+    // 从 SQLite state.vscdb 读取该父级中被禁用的扩展
+    const disabledIds = getDisabledExtensions(profileDirectory);
+    // 过滤掉禁用的扩展 (disabled: true) 和 state.vscdb 中标记为禁用的
     const extensions = (Array.isArray(rawProfileExtensions) ? rawProfileExtensions : [])
-      .filter((e: any) => e?.disabled !== true);
+      .filter((e: any) => e?.disabled !== true)
+      .filter((e: any) => !disabledIds.includes(e?.identifier?.id));
     parentProfiles.push({
       profileName,
       extensions,
@@ -1166,29 +1170,32 @@ async function syncProfileByName(
     // 回写元数据
     const { originallyOwn, optedOut } = extResult;
     if (originallyOwn.length > 0 || optedOut.length > 0) {
-      const rawSettingsContent = await readRawSettingsFile(settingsPath);
+      let rawSettingsContent = await readRawSettingsFile(settingsPath);
       const { modify, applyEdits } = await import("jsonc-parser");
       const options = {
         formattingOptions: { insertSpaces: true, tabSize: 4 },
       };
-      const edits: import("jsonc-parser").Edit[] = [];
-      edits.push(
-        ...modify(
-          rawSettingsContent,
-          ["inheritProfile", "_originallyOwnExtensions"],
-          originallyOwn,
-          options,
-        ),
+
+      // 逐条应用 edits, 避免同时修改同一对象导致 Overlapping edit
+      const settings = parseJSONC(rawSettingsContent) as Record<string, any>;
+      if (!settings?.inheritProfile) {
+        const edits = modify(rawSettingsContent, ["inheritProfile"], {}, options);
+        rawSettingsContent = applyEdits(rawSettingsContent, edits);
+      }
+      const edits1 = modify(
+        rawSettingsContent,
+        ["inheritProfile", "_originallyOwnExtensions"],
+        originallyOwn,
+        options,
       );
-      edits.push(
-        ...modify(
-          rawSettingsContent,
-          ["inheritProfile", "optedOutExtensions"],
-          optedOut,
-          options,
-        ),
+      let updated = applyEdits(rawSettingsContent, edits1);
+      const edits2 = modify(
+        updated,
+        ["inheritProfile", "optedOutExtensions"],
+        optedOut,
+        options,
       );
-      const updated = applyEdits(rawSettingsContent, edits);
+      updated = applyEdits(updated, edits2);
       await writeManagedFile(settingsPath, updated);
     }
   }

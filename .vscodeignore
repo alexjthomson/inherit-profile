@@ -1,4 +1,5 @@
 .vscode/**
+.test-user-data
 .vscode-test/**
 src/**
 .gitignore
