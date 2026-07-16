@@ -1154,7 +1154,13 @@ async function syncProfileByName(
 ): Promise<void> {
   const settingsPath = path.join(profileDir, "settings.json");
   const rawSettings = (await readJSON(settingsPath)) ?? {};
-  const parentNames: string[] = rawSettings?.inheritProfile?.parents ?? [];
+  // 兼容两种存储格式:
+  //   - 嵌套: inheritProfile.parents (jsonc-parser modify)
+  //   - 打平: inheritProfile.parents (VS Code 设置默认存储方式)
+  const parentNames: string[] =
+    rawSettings?.inheritProfile?.parents ??
+    rawSettings?.["inheritProfile.parents"] ??
+    [];
 
   // 1. 设置继承
   await removeInheritedSettingsFromFile(settingsPath);
@@ -1367,6 +1373,9 @@ export async function showInheritanceTree(
   context: vscode.ExtensionContext,
 ): Promise<void> {
   try {
+    // 先全量重建，确保树是最新状态
+    await reconcileAllProfiles(context);
+
     const { currentProfileName, profiles } =
       await getCurrentProfileDetails(context);
     const graph = getInheritanceGraph(profiles);

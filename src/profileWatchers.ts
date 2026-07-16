@@ -30,17 +30,17 @@
 
 import * as vscode from "vscode";
 import * as path from "path";
+import * as fs from "fs";
 import { createDebouncedTrigger } from "./debounce";
 import type { DebouncedTrigger } from "./debounce";
 import { resolveParentSettingsPaths, resolveParentExtensionsPaths } from "./profileSettings";
 import {
   getCurrentProfileDetails,
-  getCurrentProfileName,
   getGlobalStoragePath,
   getProfileMap,
   isManagedFileSelfWrite,
   readRawSettingsFile,
-  updateCurrentProfileInheritance,
+  reconcileAllProfiles,
   invalidateInheritanceGraph,
 } from "./profiles";
 
@@ -66,23 +66,39 @@ function createFileWatcher(filePath: string): vscode.FileSystemWatcher {
 
 /**
  * Updates the inherited settings when the profile changes.
+ *
+ * VS Code 没有公开的 Profile 切换事件 API。
+ * storage.json 在切换 Profile 时会被更新, 监听其变化并触发同步。
  * @param context Extension context.
  */
 export async function updateInheritedSettingsOnProfileChange(
   context: vscode.ExtensionContext,
 ) {
   const globalStoragePath = getGlobalStoragePath(context);
-  let currentProfile = await getCurrentProfileName(context);
+  let lastMtime = 0;
 
   const watcher = createFileWatcher(globalStoragePath);
   const onChange = async () => {
-    const newProfileName = await getCurrentProfileName(context);
-    if (newProfileName !== currentProfile) {
-      currentProfile = newProfileName;
+    try {
+      // 检查 mtime 是否确实变了（防止重复事件）
+      try {
+        const stat = fs.statSync(globalStoragePath);
+        const mtime = stat.mtimeMs;
+        if (mtime === lastMtime) return;
+        lastMtime = mtime;
+      } catch {
+        return; // 文件不存在或无法访问
+      }
+
       console.info(
-        "Current profile has changed, updating inherited settings...",
+        "[storage] storage.json changed, triggering full reconciliation...",
       );
-      await updateCurrentProfileInheritance(context);
+      await reconcileAllProfiles(context);
+    } catch (err) {
+      console.warn(
+        "[storage] Failed to sync after storage.json change:",
+        (err as Error)?.message ?? err,
+      );
     }
   };
   watcher.onDidChange(onChange);
@@ -107,7 +123,7 @@ export async function registerCurrentProfileSaveWatcher(
   context: vscode.ExtensionContext,
 ): Promise<void> {
   const scheduleReapply = createDebouncedTrigger(() =>
-    updateCurrentProfileInheritance(context),
+    reconcileAllProfiles(context),
   );
 
   let settingsWatcher: vscode.FileSystemWatcher | undefined;
@@ -184,9 +200,8 @@ export async function registerParentProfileSaveWatcher(
   // 同时供 config change handler (函数体底部) 和 resubscribe 内部共用。
   // resubscribe 中只做 reassign, 不重复声明。
   // 初始延迟与 resubscribe 中的重创版本一致 (500ms), 避免时序混乱。
-  let pendingTriggerProfile: string | undefined;
   let scheduleReapply: DebouncedTrigger = createDebouncedTrigger(
-    () => updateCurrentProfileInheritance(context), 500,
+    () => reconcileAllProfiles(context), 500,
   );
 
   let parentWatchers: vscode.FileSystemWatcher[] = [];
@@ -226,9 +241,7 @@ export async function registerParentProfileSaveWatcher(
     // ⚠️ 注意: 只做 reassign (无 let 或 const), 不重复声明, 避免遮蔽
     scheduleReapply.dispose();
     scheduleReapply = createDebouncedTrigger(async () => {
-      const triggerName = pendingTriggerProfile;
-      pendingTriggerProfile = undefined;
-      await updateCurrentProfileInheritance(context, triggerName);
+      await reconcileAllProfiles(context);
     }, 500);
 
     const parentSettingsPaths = resolveParentSettingsPaths(
@@ -252,7 +265,6 @@ export async function registerParentProfileSaveWatcher(
 
       const watcher = createFileWatcher(parentPath);
       const onChange = () => {
-        pendingTriggerProfile = profileName;
         scheduleReapply();
       };
       watcher.onDidChange(onChange);
@@ -288,12 +300,6 @@ export async function registerParentProfileSaveWatcher(
         // 配置变更后显式触发对账（同步完成, 不等待下一个文件事件）。
         //
         // ⚠️ 注意: 不传 triggerProfileName (pendingTriggerProfile = undefined)。
-        // 因为配置变更改的是"谁是父级"而非"某个父级的内容变了"，
-        // 使用级联会错误跳过当前 profile:
-        //   getDescendants(currentProfileName) 只返回后代（不含自身）
-        //   descendants.includes(currentProfileName) → false → 跳过多
-        // 因此对此场景做全量对账 equivalent to 不传 triggerProfileName。
-        pendingTriggerProfile = undefined;
         scheduleReapply();
       });
     }

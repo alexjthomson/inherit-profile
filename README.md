@@ -221,3 +221,38 @@ contribution flow:
 5. Open a pull request describing what you changed and why.
 
 If you're planning a larger change, consider opening an issue first to discuss it.
+
+---
+
+## 📖 Commands
+
+| Command | Action |
+|---------|--------|
+| **Inherit Profile: Apply Inheritance** | Apply inheritance for the current profile |
+| **Inherit Profile: Remove Inherited Settings** | Strip inherited settings & extensions from current profile |
+| **Inherit Profile: Set Parent Profiles** | Pick parent profiles via QuickPick list |
+| **Inherit Profile: Show Inheritance Tree** | Display profile inheritance tree in Output panel |
+| **Inherit Profile: Force Full Reconciliation** | Rebuild all profiles from roots down (BFS order) |
+
+---
+
+## ⚠️ Known Limitations
+
+### Profile Switching Auto-Detection
+
+VS Code 1.127+ moved profile tracking from `storage.json` into internal runtime state, so automatic detection of profile switches is no longer reliable. **Use `Force Full Reconciliation` after switching profiles** to ensure child profiles are up-to-date. This applies settings **and** extensions from all parent profiles down through the hierarchy.
+
+### Focus on Extension Inheritance
+
+This fork focuses on **extension inheritance first** — settings inheritance is functional but secondary. The primary use case is maintaining consistent extensions across profile hierarchies (Base → Dev → Rust, etc.).
+
+---
+
+## 🔧 Development Setup
+
+1. Clone the repo and run `npm install`
+2. Press **F5** to launch an Extension Development Host window
+3. Make changes, then **Ctrl+R** (reload) the test window
+4. Console output appears in the main window's **Debug Console**
+
+> **Note**: The extension is registered with a **publisher ID**, so the installed VSIX version (from Marketplace) and the development version can conflict in the test window. The `launch.json` uses `--disable-extension=luotianyiismywife.inherit-profile-plus` to prevent this. If you see version 1.0.0 in the test window, ensure the `preLaunchTask` compiles before launching (the default `npm: watch` does this correctly).
