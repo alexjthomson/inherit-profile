@@ -234,9 +234,19 @@ export function getInheritanceGraph(
 }
 
 /**
- * BFS 获取所有后代（使用 Set 去重, O(1) 查重避免重复入队）。
+ * 使反向索引缓存失效（配置变更时调用）。
+ * 注意: 日常使用中缓存由 `getInheritanceGraph` 的 `isGraphCacheValid`
+ * 自动校验（检查 profiles 列表和 mtime）, 无需手动失效。
+ * 但父级列表变更（`inheritProfile.parents` 配置变化）时仍需手动调用,
+ * 因为继承关系拓扑变了, mtime 检测无法感知。
  */
-function getDescendants(
+function invalidateInheritanceGraph(): void {
+  inheritanceGraphCache = undefined;
+  cachedProfilesSnapshot = undefined;
+  cachedProfileMtimes = undefined;
+}
+
+export function getDescendants(
   root: string,
   graph: Record<string, string[]>,
 ): string[] {
@@ -257,21 +267,38 @@ function getDescendants(
   return result;
 }
 
-/**
- * 使反向索引缓存失效（配置变更时调用）。
- * 注意: 日常使用中缓存由 `getInheritanceGraph` 的 `isGraphCacheValid`
- * 自动校验（检查 profiles 列表和 mtime）, 无需手动失效。
- * 但父级列表变更（`inheritProfile.parents` 配置变化）时仍需手动调用,
- * 因为继承关系拓扑变了, mtime 检测无法感知。
- */
-function invalidateInheritanceGraph(): void {
-  inheritanceGraphCache = undefined;
-  cachedProfilesSnapshot = undefined;
-  cachedProfileMtimes = undefined;
-}
-
 // 注意: invalidateInheritanceGraph 需要 export, 供 extension.ts 和 profileWatchers.ts 调用
 export { invalidateInheritanceGraph };
+
+/**
+ * 为当前 Profile 写入父级列表到 settings.json。
+ * 不触发同步——调用者需自行调用 reconcileAllProfiles。
+ */
+export async function writeParentProfiles(
+  context: vscode.ExtensionContext,
+  parentNames: string[],
+): Promise<void> {
+  const { currentProfileDirectory, currentProfileName } =
+    await getCurrentProfileDetails(context);
+  const settingsPath = path.join(currentProfileDirectory, "settings.json");
+  const raw = await readRawSettingsFile(settingsPath);
+  const { modify, applyEdits } = await import("jsonc-parser");
+  const options: import("jsonc-parser").ModificationOptions = {
+    formattingOptions: { insertSpaces: true, tabSize: 4 },
+  };
+  const edits = modify(
+    raw,
+    ["inheritProfile", "parents"],
+    parentNames,
+    options,
+  );
+  const updated = applyEdits(raw, edits);
+  await writeManagedFile(settingsPath, updated);
+  invalidateInheritanceGraph();
+  console.info(
+    `Parents for \`${currentProfileName}\` set to: [${parentNames.join(", ")}]`,
+  );
+}
 
 // ---------------------------------------------------------------------------
 
@@ -853,6 +880,7 @@ async function collectInheritedExtensions(
   profiles: Record<string, string>,
   originallyOwn?: string[],
   optedOutList?: string[],
+  parentProfileNamesOverride?: string[],
 ): Promise<{ extensions: any[]; originallyOwn: string[]; optedOut: string[] }> {
   // 1. 如调用者未传入, 从 settings.json 读取元数据
   const currentProfileDir = profiles[currentProfileName];
@@ -944,9 +972,14 @@ async function collectInheritedExtensions(
     }
   }
 
-  // 4. 获取父级列表
-  const config = vscode.workspace.getConfiguration("inheritProfile");
-  const parentProfileNames = config.get<string[]>("parents", []);
+  // 4. 获取父级列表 (优先使用调用者传入的, 否则从 vscode 配置读取)
+  let parentProfileNames: string[];
+  if (parentProfileNamesOverride) {
+    parentProfileNames = parentProfileNamesOverride;
+  } else {
+    const config = vscode.workspace.getConfiguration("inheritProfile");
+    parentProfileNames = config.get<string[]>("parents", []);
+  }
 
   const parentProfiles: { profileName: string; extensions: any[] }[] = [];
   for (const profileName of parentProfileNames) {
@@ -955,9 +988,12 @@ async function collectInheritedExtensions(
     const rawProfileExtensions = await readJSON(
       path.join(profileDirectory, "extensions.json")
     );
+    // 过滤掉禁用的扩展 (disabled: true), 使父级禁用能传播到子级
+    const extensions = (Array.isArray(rawProfileExtensions) ? rawProfileExtensions : [])
+      .filter((e: any) => e?.disabled !== true);
     parentProfiles.push({
       profileName,
-      extensions: Array.isArray(rawProfileExtensions) ? rawProfileExtensions : [],
+      extensions,
     });
   }
 
@@ -1062,6 +1098,143 @@ export async function updateCurrentProfileInheritance(
   }
 }
 
+// ---------------------------------------------------------------------------
+// 全量重建 + 单 Profile 同步
+// ---------------------------------------------------------------------------
+
+/**
+ * 同步指定 Profile 的继承（设置 + 扩展）。
+ * 直接从该 Profile 的 settings.json 读取 parents，不依赖 vscode 当前配置。
+ */
+async function syncProfileByName(
+  context: vscode.ExtensionContext,
+  profileName: string,
+  profileDir: string,
+  profiles: Record<string, string>,
+): Promise<void> {
+  const settingsPath = path.join(profileDir, "settings.json");
+  const rawSettings = (await readJSON(settingsPath)) ?? {};
+  const parentNames: string[] = rawSettings?.inheritProfile?.parents ?? [];
+
+  // 1. 设置继承
+  await removeInheritedSettingsFromFile(settingsPath);
+
+  const parentProfileSettings = await getProfileSettings(context, parentNames);
+  const ownSettings = stripManagedProfileSettings(flattenSettings(rawSettings));
+  const inheritedSettings = sortSettings(
+    subtractSettings(parentProfileSettings, ownSettings),
+  );
+  if (Object.keys(inheritedSettings).length > 0) {
+    await writeInheritedSettings(settingsPath, inheritedSettings);
+  }
+
+  // 2. 扩展继承
+  const config = vscode.workspace.getConfiguration("inheritProfile");
+  if (config.get<boolean>("inheritExtensions", true)) {
+    const extPath = path.join(profileDir, "extensions.json");
+    const parsedExts = await readJSON(extPath);
+    const currentExtensions = Array.isArray(parsedExts) ? parsedExts : [];
+
+    const extResult = await collectInheritedExtensions(
+      context,
+      currentExtensions,
+      profileName,
+      profiles,
+      rawSettings?.inheritProfile?._originallyOwnExtensions,
+      rawSettings?.inheritProfile?.optedOutExtensions,
+      parentNames,
+    );
+
+    const finalExtensions = extResult.extensions;
+    if (
+      JSON.stringify(finalExtensions) !== JSON.stringify(currentExtensions)
+    ) {
+      await writeManagedFile(
+        extPath,
+        JSON.stringify(finalExtensions, null, 4) + "\n",
+      );
+    }
+
+    // 回写元数据
+    const { originallyOwn, optedOut } = extResult;
+    if (originallyOwn.length > 0 || optedOut.length > 0) {
+      const rawSettingsContent = await readRawSettingsFile(settingsPath);
+      const { modify, applyEdits } = await import("jsonc-parser");
+      const options = {
+        formattingOptions: { insertSpaces: true, tabSize: 4 },
+      };
+      const edits: import("jsonc-parser").Edit[] = [];
+      edits.push(
+        ...modify(
+          rawSettingsContent,
+          ["inheritProfile", "_originallyOwnExtensions"],
+          originallyOwn,
+          options,
+        ),
+      );
+      edits.push(
+        ...modify(
+          rawSettingsContent,
+          ["inheritProfile", "optedOutExtensions"],
+          optedOut,
+          options,
+        ),
+      );
+      const updated = applyEdits(rawSettingsContent, edits);
+      await writeManagedFile(settingsPath, updated);
+    }
+  }
+}
+
+/**
+ * 全量重建：从根 Profile 开始逐级向下同步所有 Profile。
+ * 确保每一级都基于最新的父级状态。
+ */
+export async function reconcileAllProfiles(
+  context: vscode.ExtensionContext,
+): Promise<void> {
+  const profiles = await getProfileMap(context);
+  invalidateInheritanceGraph();
+  const graph = getInheritanceGraph(profiles);
+
+  // 收集所有出现在 children 中的 profile
+  const allChildren = new Set<string>();
+  for (const children of Object.values(graph)) {
+    for (const c of children) {
+      allChildren.add(c);
+    }
+  }
+
+  // 根节点 = 不是任何人的孩子的 profile
+  const roots = Object.keys(profiles).filter((p) => !allChildren.has(p));
+
+  // BFS 拓扑排序: 保证父级在子级之前被同步
+  const visited = new Set<string>();
+  const order: string[] = [];
+  const queue = [...roots];
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    if (visited.has(current)) continue;
+    visited.add(current);
+    order.push(current);
+    const children = graph[current] ?? [];
+    for (const child of children) {
+      if (!visited.has(child)) queue.push(child);
+    }
+  }
+
+  console.info(
+    `Reconciliation order: ${order.join(" \u2192 ")}`,
+  );
+
+  for (const profileName of order) {
+    const profileDir = profiles[profileName];
+    if (!profileDir) continue;
+    console.info(`Reconciling profile: ${profileName}`);
+    await syncProfileByName(context, profileName, profileDir, profiles);
+  }
+}
+
 /**
  * Removes the inherited settings from the current profile.
  * @param context Extension context.
@@ -1150,45 +1323,52 @@ export async function removeCurrentProfileInheritedSettings(
 export async function showInheritanceTree(
   context: vscode.ExtensionContext,
 ): Promise<void> {
-  const { currentProfileName, profiles } =
-    await getCurrentProfileDetails(context);
-  const graph = getInheritanceGraph(profiles);
+  try {
+    const { currentProfileName, profiles } =
+      await getCurrentProfileDetails(context);
+    const graph = getInheritanceGraph(profiles);
 
-  // 收集所有出现在 children 中的 profile
-  const allChildren = new Set<string>();
-  for (const children of Object.values(graph)) {
-    for (const c of children) {
-      allChildren.add(c);
+    // 收集所有出现在 children 中的 profile
+    const allChildren = new Set<string>();
+    for (const children of Object.values(graph)) {
+      for (const c of children) {
+        allChildren.add(c);
+      }
     }
-  }
 
-  // 根节点 = 所有 profile 中不是任何人的孩子的
-  const roots = Object.keys(profiles).filter(
-    (p) => !allChildren.has(p),
-  );
+    // 根节点 = 所有 profile 中不是任何人的孩子的
+    const roots = Object.keys(profiles).filter(
+      (p) => !allChildren.has(p),
+    );
 
-  const lines: string[] = [];
-  lines.push(
-    `Profile Inheritance Tree  (current: ${currentProfileName})`,
-  );
-  lines.push("─".repeat(50));
+    const lines: string[] = [];
+    lines.push(
+      `Profile Inheritance Tree  (current: ${currentProfileName})`,
+    );
+    lines.push("─".repeat(50));
 
-  function render(node: string, depth: number) {
-    const indent = "  ".repeat(depth);
-    const marker = node === currentProfileName ? "\u25b6 " : "  ";
-    lines.push(`${indent}${marker}${node}`);
-    const children = graph[node] ?? [];
-    for (const child of children) {
-      render(child, depth + 1);
+    function render(node: string, depth: number) {
+      const indent = "  ".repeat(depth);
+      const marker = node === currentProfileName ? "\u25b6 " : "  ";
+      lines.push(`${indent}${marker}${node}`);
+      const children = graph[node] ?? [];
+      for (const child of children) {
+        render(child, depth + 1);
+      }
     }
-  }
 
-  for (const root of roots) {
-    render(root, 0);
-  }
+    for (const root of roots) {
+      render(root, 0);
+    }
 
-  const channel = vscode.window.createOutputChannel("InheritanceTree");
-  channel.clear();
-  channel.appendLine(lines.join("\n"));
-  channel.show(true);
+    const channel = vscode.window.createOutputChannel("InheritanceTree");
+    channel.clear();
+    channel.appendLine(lines.join("\n"));
+    channel.show(true);
+  } catch (err) {
+    console.error("showInheritanceTree failed:", err);
+    vscode.window.showErrorMessage(
+      `Failed to show inheritance tree: ${(err as Error)?.message ?? err}`,
+    );
+  }
 }

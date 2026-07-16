@@ -9,10 +9,12 @@
  *
  * 工作机制（How it works）:
  *   1. activate() 在扩展加载时被 VS Code 调用
- *   2. 注册三个命令：
+ *   2. 注册五个命令：
  *      - inherit-profile.applyInheritanceToCurrentProfile — 应用继承
  *      - inherit-profile.removeInheritedSettingsFromCurrentProfile — 移除继承
- *      - inherit-profile.forceReconcile — 强制全量对账（重建反向索引）
+ *      - inherit-profile.setParentProfiles — 设置父级
+ *      - inherit-profile.showInheritanceTree — 展示继承树
+ *      - inherit-profile.forceReconcile — 全量重建
  *   3. 注册 setKeysForSync 用于跨设备同步
  *   4. 尝试从 globalState 恢复扩展标记（跨设备同步后标记可能丢失）
  *   5. 根据配置启动各类监听器
@@ -24,8 +26,9 @@
  * 对外提供的命令（Exports / Commands）:
  *   - inherit-profile.applyInheritanceToCurrentProfile
  *   - inherit-profile.removeInheritedSettingsFromCurrentProfile
- *   - inherit-profile.forceReconcile
+ *   - inherit-profile.setParentProfiles
  *   - inherit-profile.showInheritanceTree
+ *   - inherit-profile.forceReconcile
  *
  * 函数列表（Functions）:
  *   - activate(context)              [export][async] 扩展激活入口：注册命令、恢复标记、启动监听
@@ -36,7 +39,7 @@
 
 import * as vscode from "vscode";
 import * as path from "path";
-import { updateCurrentProfileInheritance, removeCurrentProfileInheritedSettings, invalidateInheritanceGraph, isManagedFileSelfWrite, writeManagedFile, readJSON, getCurrentProfileDetails, showInheritanceTree } from "./profiles";
+import { updateCurrentProfileInheritance, removeCurrentProfileInheritedSettings, invalidateInheritanceGraph, isManagedFileSelfWrite, writeManagedFile, readJSON, getCurrentProfileDetails, showInheritanceTree, reconcileAllProfiles, getInheritanceGraph, getDescendants, writeParentProfiles } from "./profiles";
 import { updateInheritedSettingsOnProfileChange, registerCurrentProfileSaveWatcher, registerParentProfileSaveWatcher } from "./profileWatchers";
 
 export async function activate(context: vscode.ExtensionContext) {
@@ -54,7 +57,48 @@ export async function activate(context: vscode.ExtensionContext) {
     )
   );
 
-  // 2. 新增: 展示继承树命令
+  // 2. 设置父级命令
+  context.subscriptions.push(
+    vscode.commands.registerCommand("inherit-profile.setParentProfiles", async () => {
+      try {
+        const { currentProfileName, profiles } =
+          await getCurrentProfileDetails(context);
+        const graph = getInheritanceGraph(profiles);
+        const descendants = getDescendants(currentProfileName, graph);
+        const exclude = new Set([currentProfileName, ...descendants]);
+
+        const config = vscode.workspace.getConfiguration("inheritProfile");
+        const currentParents = new Set(config.get<string[]>("parents", []));
+
+        const items = Object.keys(profiles)
+          .filter((p) => !exclude.has(p))
+          .map((p) => ({
+            label: p,
+            picked: currentParents.has(p),
+          }));
+
+        const selected = await vscode.window.showQuickPick(items, {
+          canPickMany: true,
+          placeHolder: "Select parent profiles (current and descendants excluded)",
+          title: `Set Parent Profiles for ${currentProfileName}`,
+        });
+
+        if (!selected) return;
+        const parentNames = selected.map((s) => s.label);
+        await writeParentProfiles(context, parentNames);
+        await reconcileAllProfiles(context);
+        vscode.window.showInformationMessage(
+          `Parents updated for ${currentProfileName}. Full reconciliation done.`,
+        );
+      } catch (err) {
+        vscode.window.showErrorMessage(
+          `Failed to set parent profiles: ${(err as Error)?.message ?? err}`,
+        );
+      }
+    }),
+  );
+
+  // 4. 展示继承树命令
   context.subscriptions.push(
     vscode.commands.registerCommand(
       "inherit-profile.showInheritanceTree",
@@ -62,43 +106,53 @@ export async function activate(context: vscode.ExtensionContext) {
     )
   );
 
-  // 3. 新增: 强制全量对账命令 (重建反向索引)
+  // 5. 强制全量对账命令 (从根 Profile 开始逐级重建全部)
   context.subscriptions.push(
     vscode.commands.registerCommand("inherit-profile.forceReconcile", async () => {
-      invalidateInheritanceGraph();
-      await updateCurrentProfileInheritance(context);
+      await reconcileAllProfiles(context);
       if (vscode.workspace.getConfiguration("inheritProfile").get<boolean>("showMessages", true)) {
-        vscode.window.showInformationMessage("Profile inheritance reconciliation complete!");
+        vscode.window.showInformationMessage("Full profile reconciliation complete!");
       }
     })
   );
 
-  // 3. 注册 setKeysForSync (固定 key, 跨设备同步)
+  // 6. 注册 setKeysForSync (固定 key, 跨设备同步)
   context.globalState.setKeysForSync([
     "inheritProfile.extensionMarkers",
     "inheritProfile.parentSnapshots",
   ]);
 
-  // 4. 尝试从 globalState 恢复扩展标记（跨设备同步后标记可能丢失）。
-  //    仅恢复标记, 不触发全量对账——由步骤 5 统一完成。
+  // 7. 尝试从 globalState 恢复扩展标记（跨设备同步后标记可能丢失）。
+  //    仅恢复标记, 不触发全量对账——由步骤 9 统一完成。
   await checkAndRestoreMarkers(context);
 
-  // 5. 启动时运行 (同现有)
+  // 8. 版本检测: inherit-profile 自身版本变化时触发全量重建
+  const currentVersion = context.extension.packageJSON.version as string;
+  const lastVersion = context.globalState.get<string>("inheritProfile.lastVersion");
+  if (currentVersion && lastVersion !== currentVersion) {
+    console.info(
+      `Version changed from ${lastVersion ?? "(none)"} to ${currentVersion}. Triggering full reconciliation.`,
+    );
+    await reconcileAllProfiles(context);
+    void context.globalState.update("inheritProfile.lastVersion", currentVersion);
+  }
+
+  // 9. 启动时运行 (同现有)
   if (vscode.workspace.getConfiguration("inheritProfile").get<boolean>("runOnStartup", true)) {
     updateCurrentProfileInheritance(context);
   }
 
-  // 6. Profile/配置变更时
+  // 10. Profile/配置变更时
   if (vscode.workspace.getConfiguration("inheritProfile").get<boolean>("runOnProfileChange", true)) {
     updateInheritedSettingsOnProfileChange(context);
   }
 
-  // 7. 当前 profile 保存时
+  // 11. 当前 profile 保存时
   if (vscode.workspace.getConfiguration("inheritProfile").get<boolean>("runOnCurrentProfileSave", true)) {
     registerCurrentProfileSaveWatcher(context);
   }
 
-  // 8. 父级 profile 保存时
+  // 12. 父级 profile 保存时
   if (vscode.workspace.getConfiguration("inheritProfile").get<boolean>("runOnParentProfileSave", true)) {
     registerParentProfileSaveWatcher(context);
   }
