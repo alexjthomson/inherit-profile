@@ -272,6 +272,18 @@ export function getDescendants(
 export { invalidateInheritanceGraph };
 
 /**
+ * 为当前 Profile 读取父级列表（直接从 settings.json 读取，不经过 VS Code 设置 API）。
+ */
+export async function readParentProfiles(
+  context: vscode.ExtensionContext,
+): Promise<string[]> {
+  const { currentProfileDirectory } = await getCurrentProfileDetails(context);
+  const settingsPath = path.join(currentProfileDirectory, "settings.json");
+  const settings = (await readJSON(settingsPath)) ?? {};
+  return settings?.inheritProfile?.["parents"] ?? settings?.["inheritProfile.parents"] ?? [];
+}
+
+/**
  * 为当前 Profile 写入父级列表到 settings.json。
  * 不触发同步——调用者需自行调用 reconcileAllProfiles。
  */
@@ -1368,6 +1380,7 @@ export async function removeCurrentProfileInheritedSettings(
 /**
  * 在 OutputChannel 中展示所有 Profile 的继承树形图。
  * 当前 Profile 前带 "▶ " 标记。
+ * 直接读文件构建树，不依赖 graph 缓存。
  */
 export async function showInheritanceTree(
   context: vscode.ExtensionContext,
@@ -1378,17 +1391,34 @@ export async function showInheritanceTree(
 
     const { currentProfileName, profiles } =
       await getCurrentProfileDetails(context);
-    const graph = getInheritanceGraph(profiles);
 
-    // 收集所有出现在 children 中的 profile
+    // 直接读每个 profile 的 settings.json 获取 parents
+    const childToParents: Record<string, string[]> = {};
+    for (const [name, dir] of Object.entries(profiles)) {
+      const settingsPath = path.join(dir, "settings.json");
+      const raw = (await readJSON(settingsPath)) ?? {};
+      childToParents[name] =
+        raw?.inheritProfile?.parents ??
+        raw?.["inheritProfile.parents"] ??
+        [];
+    }
+
+    // 构建 parent→children 映射
+    const children: Record<string, string[]> = {};
     const allChildren = new Set<string>();
-    for (const children of Object.values(graph)) {
-      for (const c of children) {
-        allChildren.add(c);
+    for (const [childName, parentNames] of Object.entries(childToParents)) {
+      for (const parentName of parentNames) {
+        if (profiles[parentName]) {
+          if (!children[parentName]) children[parentName] = [];
+          if (!children[parentName].includes(childName)) {
+            children[parentName].push(childName);
+          }
+          allChildren.add(childName);
+        }
       }
     }
 
-    // 根节点 = 所有 profile 中不是任何人的孩子的
+    // 根节点
     const roots = Object.keys(profiles).filter(
       (p) => !allChildren.has(p),
     );
@@ -1403,8 +1433,8 @@ export async function showInheritanceTree(
       const indent = "  ".repeat(depth);
       const marker = node === currentProfileName ? "\u25b6 " : "  ";
       lines.push(`${indent}${marker}${node}`);
-      const children = graph[node] ?? [];
-      for (const child of children) {
+      const nodeChildren = children[node] ?? [];
+      for (const child of nodeChildren) {
         render(child, depth + 1);
       }
     }
