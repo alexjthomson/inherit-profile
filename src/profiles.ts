@@ -1379,8 +1379,9 @@ export async function removeCurrentProfileInheritedSettings(
 
 /**
  * 在 OutputChannel 中展示所有 Profile 的继承树形图。
- * 当前 Profile 前带 "▶ " 标记。
  * 直接读文件构建树，不依赖 graph 缓存。
+ * 注意：由于 VS Code 1.127+ 不通过文件暴露当前激活的 Profile，
+ * 树中不显示 "▶" 标记。
  */
 export async function showInheritanceTree(
   context: vscode.ExtensionContext,
@@ -1389,8 +1390,7 @@ export async function showInheritanceTree(
     // 先全量重建，确保树是最新状态
     await reconcileAllProfiles(context);
 
-    const { currentProfileName, profiles } =
-      await getCurrentProfileDetails(context);
+    const profiles = await getProfileMap(context);
 
     // 直接读每个 profile 的 settings.json 获取 parents
     const childToParents: Record<string, string[]> = {};
@@ -1424,15 +1424,12 @@ export async function showInheritanceTree(
     );
 
     const lines: string[] = [];
-    lines.push(
-      `Profile Inheritance Tree  (current: ${currentProfileName})`,
-    );
+    lines.push(`Profile Inheritance Tree`);
     lines.push("─".repeat(50));
 
     function render(node: string, depth: number) {
       const indent = "  ".repeat(depth);
-      const marker = node === currentProfileName ? "\u25b6 " : "  ";
-      lines.push(`${indent}${marker}${node}`);
+      lines.push(`${indent}${node}`);
       const nodeChildren = children[node] ?? [];
       for (const child of nodeChildren) {
         render(child, depth + 1);
