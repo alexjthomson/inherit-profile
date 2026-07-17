@@ -242,6 +242,8 @@ If you're planning a larger change, consider opening an issue first to discuss i
 
 VS Code 1.127+ moved profile tracking from `storage.json` into internal runtime state, so automatic detection of profile switches is no longer reliable. **Use `Force Full Reconciliation` after switching profiles** to ensure child profiles are up-to-date. This applies settings **and** extensions from all parent profiles down through the hierarchy.
 
+As a result, the **Show Inheritance Tree** command can no longer display which profile is currently active (the "▶" marker has been removed). The tree shows the inheritance hierarchy only.
+
 ### Focus on Extension Inheritance
 
 This fork focuses on **extension inheritance first** — settings inheritance is functional but secondary. The primary use case is maintaining consistent extensions across profile hierarchies (Base → Dev → Rust, etc.).
