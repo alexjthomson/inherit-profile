@@ -1,4 +1,5 @@
 .vscode/**
+.test-user-data
 .vscode-test/**
 src/**
 .gitignore
@@ -9,3 +10,4 @@ vsc-extension-quickstart.md
 **/*.map
 **/*.ts
 **/.vscode-test.*
+!node_modules/sql.js/dist/sql-wasm.wasm

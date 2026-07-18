@@ -1,5 +1,104 @@
 import * as path from "path";
 
+/**
+ * =============================================================================
+ * inherit-profile-plus — JSONC 操作工具函数
+ * =============================================================================
+ *
+ * 用途（Purpose）:
+ *   纯工具/辅助函数模块。提供 JSONC（JSON with Comments）文件的各种操作函数，
+ *   专为 VS Code settings.json 格式设计。不直接操作 Profile 或继承逻辑，
+ *   只处理字符串和对象的转换。
+ *
+ * 工作机制（How it works）:
+ *   所有函数都是纯函数（无副作用）或纯工具函数。主要功能：
+ *
+ *   1. 设置对象操作：
+ *      - flattenSettings() — 将嵌套 settings 拍平
+ *      - mergeFlattenedSettings() — 合并两个拍平后的设置对象
+ *      - subtractSettings() — 返回 base 中不在 toRemove 里的项
+ *      - sortSettings() — 按 key 字母序排序
+ *      - stripManagedProfileSettings() — 从对象中移除内部标记 key
+ *
+ *   2. 标记常量：
+ *      - INHERITED_SETTINGS_START_MARKER / END_MARKER — inherited 块起止标记
+ *      - INHERITED_SETTINGS_INSERTION_BOUNDARY_KEY — 内部门牌设置 key
+ *      - INHERITED_PROFILE_META_KEY — 扩展继承元数据 key
+ *      - NON_FLATTENABLE_SETTINGS — 不可拍平的设置 Key 集合
+ *      - WARNING_COMMENT / WARNING_EXPLAIN — 继承块警告注释
+ *
+ *   3. 扩展操作：
+ *      - isInheritedExtension() / isOptedOutExtension() — 检查扩展标记
+ *      - markExtensionAsInherited() / markExtensionAsOptedOut() — 设置扩展标记
+ *      - convertOldMarkers() — 旧标记格式转换（inheritedFromProfile → inheritProfile.inherited）
+ *      - stripInheritedExtensions() — 移除继承的扩展
+ *      - mergeInheritedExtensions() — 全量对账合并父级扩展
+ *
+ *   4. 字符串/文件操作：
+ *      - buildInheritedSettingsBlock() — 构建 inherited 设置块
+ *      - splitRawSettingsByClosingBrace() — 按最后一个 } 切开 JSON
+ *      - insertBeforeClose() — 在关闭括号前插入内容
+ *      - removeTrailingComma() — 移除末尾多余逗号（支持注释和字符串）
+ *      - removeInsertionBoundarySetting() — 移除内部门牌设置行
+ *      - findTabValue() — 检测 JSONC 文件的缩进风格
+ *      - resolveParentSettingsPaths() — 解析父级 settings.json 路径
+ *      - resolveParentExtensionsPaths() — 解析父级 extensions.json 路径
+ *
+ * 依赖关系（Dependencies）:
+ *   - path — 路径拼接
+ *   无其他外部依赖，纯 TypeScript 实现
+ *
+ * 被谁使用（Used by）:
+ *   - src/profiles.ts — 所有继承逻辑均依赖此模块
+ *   - src/profileWatchers.ts — 使用路径解析函数
+ *
+ * 导出列表（Exports）:
+ *   --- 常量 ---
+ *   - INHERITED_SETTINGS_START_MARKER                 inherited 块起始标记
+ *   - INHERITED_SETTINGS_END_MARKER                   inherited 块结束标记
+ *   - INHERITED_SETTINGS_INSERTION_BOUNDARY_KEY       内部门牌设置 key
+ *   - INHERITED_SETTINGS_INSERTION_BOUNDARY_VALUE     内部门牌设置 value
+ *   - INHERITED_PROFILE_META_KEY                      扩展元数据 key
+ *   - WARNING_COMMENT                                 继承块警告注释
+ *   - WARNING_EXPLAIN                                 继承块说明注释
+ *   - NON_FLATTENABLE_SETTINGS                        不可拍平的设置 Key 集合
+ *
+ *   --- 类型 ---
+ *   - ExtensionEntry (interface)                      扩展条目接口
+ *   - InheritedProfileMeta (interface)                继承元数据接口
+ *
+ *   --- 设置对象操作 ---
+ *   - flattenSettings(settings, parentKey?, result?)  嵌套设置拍平
+ *   - mergeFlattenedSettings(target, source)           合并两个拍平设置（source 优先）
+ *   - subtractSettings(base, toRemove)                返回 base 中不在 toRemove 的项
+ *   - sortSettings(settings)                          按 key 字母序排序
+ *   - stripManagedProfileSettings(settings)           移除内部标记 key
+ *
+ *   --- 扩展操作 ---
+ *   - getInheritedProfileMeta(ext)                    读取扩展的继承元数据
+ *   - isInheritedExtension(ext)                       检查是否为继承的扩展
+ *   - isOptedOutExtension(ext)                        检查是否为跳过继承的扩展
+ *   - markExtensionAsInherited(ext)                   标记扩展为继承而来
+ *   - markExtensionAsOptedOut(extId, originalExt?)    创建跳过继承的扩展条目
+ *   - convertOldMarkers(ext)                          转换旧标记格式
+ *   - stripInheritedExtensions(extensions)            移除所有继承的扩展
+ *   - mergeInheritedExtensions(current, parents, originallyOwn)
+ *                                                     全量对账合并父级扩展
+ *
+ *   --- 路径解析 ---
+ *   - resolveParentSettingsPaths(names, profiles)     解析父级 settings.json 路径
+ *   - resolveParentExtensionsPaths(names, profiles)   解析父级 extensions.json 路径
+ *
+ *   --- JSONC 字符串操作 ---
+ *   - removeInsertionBoundarySetting(after)           移除内部门牌行
+ *   - removeTrailingComma(text)                       移除末尾多余逗号
+ *   - splitRawSettingsByClosingBrace(raw)             按最后一个 } 切分为两部分
+ *   - findTabValue(raw)                               检测缩进风格（空格/制表符）
+ *   - buildInheritedSettingsBlock(flattened, tab)     构建完整的 inherited 设置块
+ *   - insertBeforeClose(beforeClose, block)           在关闭括号前插入内容
+ *   - getLastMeaningfulCharacterIndex(text)           获取最后一个有意义的字符索引
+ */
+
 export const INHERITED_SETTINGS_START_MARKER =
   "// --- INHERITED SETTINGS MARKER START --- //";
 export const INHERITED_SETTINGS_END_MARKER =
@@ -7,6 +106,12 @@ export const INHERITED_SETTINGS_END_MARKER =
 export const INHERITED_SETTINGS_INSERTION_BOUNDARY_KEY =
   "inheritProfile._insertionBoundary";
 export const INHERITED_SETTINGS_INSERTION_BOUNDARY_VALUE = false;
+
+/**
+ * Key used inside extension entry metadata to store inheritance state.
+ * @see InheritedProfileMeta
+ */
+export const INHERITED_PROFILE_META_KEY = "inheritProfile";
 
 export const WARNING_COMMENT =
   "// WARNING: Do not remove the inherited settings start and end markers.";
@@ -135,9 +240,11 @@ export function sortSettings(settings: Record<string, any>): Record<string, any>
 export function stripManagedProfileSettings<T>(
   settings: Record<string, T>,
 ): Record<string, T> {
-  const strippedSettings = { ...settings };
-  delete strippedSettings[INHERITED_SETTINGS_INSERTION_BOUNDARY_KEY];
-  return strippedSettings;
+  // 过滤所有 inheritProfile.* 私有键, 防止泄漏到子级 profile
+  // 包括: _insertionBoundary, _originallyOwnExtensions, optedOutExtensions 等
+  return Object.fromEntries(
+    Object.entries(settings).filter(([key]) => !key.startsWith("inheritProfile."))
+  );
 }
 
 /**
@@ -175,65 +282,265 @@ export interface ExtensionEntry {
 }
 
 /**
- * Removes any extensions that were previously marked as inherited from
- * another profile (i.e. extensions with a `metadata.inheritedFromProfile`
- * field).
+ * Metadata stored inside an extension entry's `metadata.inheritProfile` field.
+ */
+export interface InheritedProfileMeta {
+  inherited?: boolean;   // true = 从父级继承来的
+  optedOut?: boolean;    // true = 用户主动跳过此扩展的继承
+}
+
+// ---------------------------------------------------------------------------
+// 辅助函数 — 基于 INHERITED_PROFILE_META_KEY 的标记读写
+// ---------------------------------------------------------------------------
+
+/**
+ * Reads the inheritProfile metadata from an extension entry.
+ */
+export function getInheritedProfileMeta(ext: ExtensionEntry): InheritedProfileMeta | undefined {
+  return ext?.metadata?.[INHERITED_PROFILE_META_KEY];
+}
+
+/**
+ * Returns true if the extension is marked as inherited from a parent profile.
+ */
+export function isInheritedExtension(ext: ExtensionEntry): boolean {
+  return getInheritedProfileMeta(ext)?.inherited === true;
+}
+
+/**
+ * Returns true if the user has opted out of inheriting this extension.
+ */
+export function isOptedOutExtension(ext: ExtensionEntry): boolean {
+  return getInheritedProfileMeta(ext)?.optedOut === true;
+}
+
+/**
+ * Tags an extension entry as inherited from a parent profile.
+ * Preserves existing metadata; only sets inheritProfile.inherited = true.
+ */
+export function markExtensionAsInherited<T extends ExtensionEntry>(ext: T): T {
+  return {
+    ...ext,
+    metadata: {
+      ...(ext.metadata ?? {}),
+      [INHERITED_PROFILE_META_KEY]: { inherited: true },
+    },
+  };
+}
+
+/**
+ * Creates a minimal extension entry representing an opted-out extension.
+ * Preserves the original identifier if available (VS Code prefers full
+ * identifier with id + uuid for reliable recognition).
+ *
+ * @param extId The extension ID to opt out of.
+ * @param originalExt Optional original extension entry to preserve full
+ *                    identifier and other fields from.
+ */
+export function markExtensionAsOptedOut(
+  extId: string,
+  originalExt?: ExtensionEntry,
+): ExtensionEntry {
+  const identifier = originalExt?.identifier ?? { id: extId };
+  // Preserve non-metadata fields (version, location, etc.) if available
+  const { metadata, ...rest } = originalExt ?? {};
+  return {
+    ...rest,
+    identifier,
+    metadata: {
+      [INHERITED_PROFILE_META_KEY]: { optedOut: true },
+    },
+  };
+}
+
+/**
+ * Converts the old `metadata.inheritedFromProfile` marker to the new
+ * `metadata.inheritProfile.inherited` format.
+ * If the entry already uses the new format, it is returned unchanged.
+ */
+export function convertOldMarkers<T extends ExtensionEntry>(ext: T): T {
+  if (ext?.metadata?.inheritedFromProfile) {
+    const { inheritedFromProfile, ...restMetadata } = ext.metadata;
+    const newMetadata = {
+      ...restMetadata,
+      [INHERITED_PROFILE_META_KEY]: { inherited: true },
+    };
+    // 转换后如果 metadata 为空, 设为 undefined 避免写入空对象
+    if (Object.keys(newMetadata).length === 0) {
+      const { metadata, ...rest } = ext;
+      return { ...rest } as T;
+    }
+    return {
+      ...ext,
+      metadata: newMetadata,
+    };
+  }
+  return ext;
+}
+
+/**
+ * Resolves the absolute path to each named parent profile's `extensions.json`
+ * file, preserving order and silently skipping any name that isn't present
+ * in `profiles`.
+ */
+export function resolveParentExtensionsPaths(
+  parentProfileNames: readonly string[],
+  profiles: Readonly<Record<string, string>>,
+): string[] {
+  const extPaths: string[] = [];
+  for (const name of parentProfileNames) {
+    const dir = profiles[name];
+    if (dir) {
+      extPaths.push(path.join(dir, "extensions.json"));
+    }
+  }
+  return extPaths;
+}
+
+/**
+ * Removes any extensions that were previously marked as inherited (i.e.
+ * extensions with `metadata.inheritProfile.inherited === true`).
+ *
+ * Extensions that the user has opted out of inheriting
+ * (`metadata.inheritProfile.optedOut === true`) are kept.
+ *
  * @param extensions Extensions to filter.
- * @returns Returns `extensions` without any previously-inherited entries.
+ * @returns Returns `extensions` without any inherited entries.
  */
 export function stripInheritedExtensions<T extends ExtensionEntry>(
   extensions: readonly T[],
 ): T[] {
-  return extensions.filter((extension) => !extension?.metadata?.inheritedFromProfile);
+  return extensions.filter(
+    (ext) => !isInheritedExtension(ext) // 只清理 inherited, optedOut 保留
+  );
 }
 
 /**
- * Merges extensions collected from a list of parent profiles into the
- * current profile's extensions, tagging newly inherited extensions with
- * `metadata.inheritedFromProfile` so they can be identified and removed
- * later.
+ * Full-reconciliation merge of parent extensions into the current profile.
  *
- * Extensions that already exist in `currentExtensions` (matched by
- * `identifier.id`) always take priority over an inherited extension with the
- * same id. When more than one parent profile declares the same extension,
- * the first profile in `parentProfiles` to declare it wins.
+ * Instead of incrementally adding missing extensions, this function performs
+ * a complete three-way reconciliation:
  *
- * @param currentExtensions Extensions already declared by the current
- * profile. Any previously-inherited entries should already be stripped out
- * (see {@link stripInheritedExtensions}).
- * @param parentProfiles Ordered list of parent profile names paired with the
- * extensions declared by that profile.
- * @returns Returns the merged list of extensions to write back to the
- * current profile.
+ * 1. Classifies all current extensions into own / inherited / optedOut
+ * 2. Discards all inherited entries (they will be recomputed)
+ * 3. Walks parent profiles in order, applying the full reconciliation rules
+ * 4. Handles revert-to-own (when a parent no longer provides an extension
+ *    that was originally owned) and auto-opt-out (when a user deleted an
+ *    inherited extension that the parent still provides)
+ *
+ * @param currentExtensions All extensions currently declared by the current profile.
+ * @param parentProfiles Ordered list of parent profile names paired with their extensions.
+ * @param originallyOwnExtensions Optional list of extension IDs that were originally
+ *   owned by this profile (before being "taken over" by a parent).
+ * @returns The merged result plus the updated originallyOwn list and a
+ *   parentNameMap for backup purposes.
  */
 export function mergeInheritedExtensions<T extends ExtensionEntry>(
   currentExtensions: readonly T[],
   parentProfiles: readonly { profileName: string; extensions: readonly T[] }[],
-): T[] {
-  const extensionMap: Record<string, T> = {};
-  for (const extension of currentExtensions) {
-    const id = extension?.identifier?.id;
-    if (id) {
-      extensionMap[id] = extension;
+  originallyOwnExtensions?: readonly string[],
+): { merged: T[]; originallyOwnExtensions: string[]; parentNameMap: Record<string, string> } {
+  const originallyOwn = new Set(originallyOwnExtensions ?? []);
+
+  // 1. 先将旧标记转换为新格式
+  const converted = currentExtensions.map(convertOldMarkers);
+
+  // 2. 分类: own / inherited / optedOut
+  const ownMap: Record<string, T> = {};
+  const optedOutMap: Record<string, boolean> = {};
+  const inheritedFromPrev: Record<string, T> = {};
+
+  for (const ext of converted) {
+    const id = ext?.identifier?.id;
+    if (!id) continue;
+    if (isOptedOutExtension(ext)) {
+      optedOutMap[id] = true;
+    } else if (isInheritedExtension(ext)) {
+      inheritedFromPrev[id] = ext;
+    } else {
+      ownMap[id] = ext;
     }
   }
 
-  for (const { profileName, extensions } of parentProfiles) {
-    for (const extension of extensions) {
-      const id = extension?.identifier?.id;
-      if (id && !(id in extensionMap)) {
-        extensionMap[id] = {
-          ...extension,
-          metadata: {
-            ...(extension.metadata ?? {}),
-            inheritedFromProfile: profileName,
-          },
-        };
+  // 3. 从父级重新计算 inherited
+  const inheritedMap: Record<string, T> = {};
+  const visitedFromParent = new Set<string>();
+
+  for (const { extensions } of parentProfiles) {
+    for (const parentExt of extensions) {
+      const id = parentExt?.identifier?.id;
+      if (!id || visitedFromParent.has(id)) continue;
+      visitedFromParent.add(id);
+
+      if (optedOutMap[id]) continue;
+
+      if (ownMap[id]) {
+        // own → inherited, 记入 originallyOwn
+        inheritedMap[id] = markExtensionAsInherited(ownMap[id]);
+        delete ownMap[id];
+        if (!originallyOwn.has(id)) {
+          originallyOwn.add(id);
+        }
+      } else if (!inheritedMap[id]) {
+        inheritedMap[id] = markExtensionAsInherited(
+          parentExt as unknown as T
+        );
       }
     }
   }
 
-  return Object.values(extensionMap);
+  // 4. 清理: 原本 inherited 但父级不再提供
+  const newOptedOut: string[] = [];
+  for (const [id, ext] of Object.entries(inheritedFromPrev)) {
+    if (inheritedMap[id]) continue; // 父级仍有, 保留
+
+    if (visitedFromParent.has(id)) {
+      // 父级仍有但被用户删除 → 自动 opt-out
+      newOptedOut.push(id);
+    } else if (originallyOwn.has(id)) {
+      // 父级不再提供, 但原本是 own → 退还为 own
+      const { metadata, ...rest } = ext;
+      const { [INHERITED_PROFILE_META_KEY]: _, ...restMeta } = metadata ?? {};
+      ownMap[id] = { ...rest, metadata: Object.keys(restMeta).length > 0 ? restMeta : undefined } as T;
+      originallyOwn.delete(id);
+    }
+    // 父级不再提供, 也不是 originallyOwn → 丢弃
+  }
+
+  // 5. 组装结果
+  const optedOutEntries = [
+    ...Object.keys(optedOutMap).map((id) =>
+      markExtensionAsOptedOut(id, inheritedFromPrev[id]) as unknown as T
+    ),
+    ...newOptedOut.map((id) =>
+      markExtensionAsOptedOut(id, inheritedFromPrev[id]) as unknown as T
+    ),
+  ];
+
+  const result: T[] = [
+    ...Object.values(ownMap),
+    ...optedOutEntries,
+    ...Object.values(inheritedMap),
+  ];
+
+  // 6. 构建 extId → parentName 映射（用于跨设备恢复备份）
+  const parentNameMap: Record<string, string> = {};
+  for (const { profileName, extensions } of parentProfiles) {
+    for (const ext of extensions) {
+      const id = ext?.identifier?.id;
+      if (id && inheritedMap[id] && !parentNameMap[id]) {
+        parentNameMap[id] = profileName;
+      }
+    }
+  }
+
+  return {
+    merged: result,
+    originallyOwnExtensions: [...originallyOwn].filter(
+      (id) => inheritedMap[id] || ownMap[id]
+    ), // 清理悬空引用
+    parentNameMap,
+  };
 }
 
 export function removeInsertionBoundarySetting(after: string): string {

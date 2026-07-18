@@ -1,13 +1,13 @@
 {
-  "name": "inherit-profile",
-  "version": "1.0.0",
-  "displayName": "Inherit Profile",
-  "description": "Profile inheritance for VS Code.",
+  "name": "inherit-profile-plus",
+  "version": "1.6.2",
+  "displayName": "Inherit Profile Plus",
+  "description": "Profile inheritance for VS Code. Community fork with VS Code 1.127+ fixes.",
   "icon": "branding/icon_128.png",
-  "publisher": "alexthomson",
+  "publisher": "luotianyiismywife",
   "repository": {
     "type": "git",
-    "url": "https://github.com/alexjthomson/inherit-profile"
+    "url": "https://github.com/luotianyiismywife/inherit-profile"
   },
   "license": "MIT",
   "engines": {
@@ -30,9 +30,9 @@
     "configs",
     "workspace"
   ],
-  "homepage": "https://github.com/alexjthomson/inherit-profile#readme",
+  "homepage": "https://github.com/luotianyiismywife/inherit-profile#readme",
   "bugs": {
-    "url": "https://github.com/alexjthomson/inherit-profile/issues"
+    "url": "https://github.com/luotianyiismywife/inherit-profile/issues"
   },
   "galleryBanner": {
     "color": "#1e1e1e",
@@ -49,13 +49,26 @@
     "commands": [
       {
         "command": "inherit-profile.applyInheritanceToCurrentProfile",
-        "title": "Apply Profile Inheritance (Current Profile)",
+        "title": "Inherit Profile: Apply Inheritance",
         "icon": "combine"
       },
       {
         "command": "inherit-profile.removeInheritedSettingsFromCurrentProfile",
-        "title": "Remove Inherited Settings (Current Profile)",
+        "title": "Inherit Profile: Remove Inherited Settings",
         "icon": "clear-all"
+      },
+      {
+        "command": "inherit-profile.forceReconcile",
+        "title": "Inherit Profile: Force Full Reconciliation",
+        "icon": "combine"
+      },
+      {
+        "command": "inherit-profile.showInheritanceTree",
+        "title": "Inherit Profile: Show Inheritance Tree"
+      },
+      {
+        "command": "inherit-profile.setParentProfiles",
+        "title": "Inherit Profile: Set Parent Profiles"
       }
     ],
     "configuration": {
@@ -79,6 +92,16 @@
           "default": true,
           "description": "Updates the inherited settings when the current profile is changed."
         },
+        "inheritProfile.showMessages": {
+          "type": "boolean",
+          "default": false,
+          "description": "Shows a message when settings are inherited or removed."
+        },
+        "inheritProfile.inheritExtensions": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether to inherit extensions from parent profiles."
+        },
         "inheritProfile.runOnCurrentProfileSave": {
           "type": "boolean",
           "default": true,
@@ -87,17 +110,7 @@
         "inheritProfile.runOnParentProfileSave": {
           "type": "boolean",
           "default": true,
-          "description": "Updates the inherited settings when one of the parent profiles' settings.json is saved."
-        },
-        "inheritProfile.inheritExtensions": {
-          "type": "boolean",
-          "default": true,
-          "description": "Inherits extensions from parent profiles. Disable to only inherit settings."
-        },
-        "inheritProfile.showMessages": {
-          "type": "boolean",
-          "default": false,
-          "description": "Shows a message when settings are inherited or removed."
+          "description": "Updates the inherited settings when a parent profile's settings.json is saved."
         },
         "inheritProfile._insertionBoundary": {
           "type": "boolean",
@@ -118,16 +131,17 @@
   },
   "devDependencies": {
     "@types/node": "22.x",
-    "@types/vscode": "^1.125.0",
+    "@types/vscode": "^1.103.0",
     "@typescript-eslint/eslint-plugin": "^8.39.0",
-    "@typescript-eslint/parser": "^8.63.0",
+    "@typescript-eslint/parser": "^8.39.0",
     "@vscode/test-cli": "^0.0.11",
-    "@vscode/test-electron": "^3.0.0",
+    "@vscode/test-electron": "^2.5.2",
     "eslint": "^9.32.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.2"
   },
   "dependencies": {
-    "jsonc-parser": "^3.3.1"
+    "jsonc-parser": "^3.3.1",
+    "sql.js": "^1.14.1"
   }
 }

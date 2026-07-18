@@ -15,11 +15,18 @@ import {
   NON_FLATTENABLE_SETTINGS,
   removeTrailingComma,
   resolveParentSettingsPaths,
+  resolveParentExtensionsPaths,
   sortSettings,
   splitRawSettingsByClosingBrace,
   stripInheritedExtensions,
   stripManagedProfileSettings,
   subtractSettings,
+  isInheritedExtension,
+  isOptedOutExtension,
+  markExtensionAsInherited,
+  markExtensionAsOptedOut,
+  convertOldMarkers,
+  INHERITED_PROFILE_META_KEY,
 } from "../../profileSettings";
 
 suite("profileSettings helpers", () => {
@@ -289,16 +296,26 @@ suite("profileSettings helpers", () => {
     assert.deepStrictEqual(splitRawSettingsByClosingBrace(""), ["{\n", "}\n"]);
   });
 
-  test("stripInheritedExtensions removes only extensions tagged as inherited", () => {
+  test("stripInheritedExtensions removes only extensions tagged as inherited (new marker)", () => {
     assert.deepStrictEqual(
       stripInheritedExtensions([
         { identifier: { id: "esbenp.prettier-vscode" } },
         {
           identifier: { id: "ms-python.python" },
-          metadata: { inheritedFromProfile: "Default" },
+          metadata: { inheritProfile: { inherited: true } },
+        },
+        {
+          identifier: { id: "ext.opted" },
+          metadata: { inheritProfile: { optedOut: true } },
         },
       ]),
-      [{ identifier: { id: "esbenp.prettier-vscode" } }],
+      [
+        { identifier: { id: "esbenp.prettier-vscode" } },
+        {
+          identifier: { id: "ext.opted" },
+          metadata: { inheritProfile: { optedOut: true } },
+        },
+      ],
     );
   });
 
@@ -317,21 +334,23 @@ suite("profileSettings helpers", () => {
     );
 
     assert.deepStrictEqual(
-      result.map((extension) => extension.identifier?.id).sort(),
+      result.merged.map((extension) => extension.identifier?.id).sort(),
       ["esbenp.prettier-vscode", "ms-python.python"],
     );
 
-    const inherited = result.find(
+    const inherited = result.merged.find(
       (extension) => extension.identifier?.id === "ms-python.python",
     );
-    assert.strictEqual(inherited?.metadata?.inheritedFromProfile, "Default");
+    assert.strictEqual(inherited?.metadata?.inheritProfile?.inherited, true);
 
-    // The extension already declared by the current profile must not be
-    // tagged as inherited, even though a parent profile also declares it.
-    const existing = result.find(
+    // The extension declared by both current and parent profiles is also
+    // marked as inherited (own→inherited conversion), since the parent
+    // "takes over" its inheritance management. VS Code deduplicates by
+    // identifier.id so this does not cause duplication in the UI.
+    const existing = result.merged.find(
       (extension) => extension.identifier?.id === "esbenp.prettier-vscode",
     );
-    assert.strictEqual(existing?.metadata?.inheritedFromProfile, undefined);
+    assert.strictEqual(existing?.metadata?.inheritProfile?.inherited, true);
   });
 
   test("mergeInheritedExtensions prioritises the first parent profile to declare an extension", () => {
@@ -346,14 +365,15 @@ suite("profileSettings helpers", () => {
       },
     ]);
 
-    assert.strictEqual(result.length, 1);
-    assert.strictEqual(result[0].metadata?.inheritedFromProfile, "Default");
+    assert.strictEqual(result.merged.length, 1);
+    assert.strictEqual(result.merged[0].metadata?.inheritProfile?.inherited, true);
   });
 
   test("mergeInheritedExtensions returns the current extensions unchanged when there are no parent profiles", () => {
     const currentExtensions = [{ identifier: { id: "esbenp.prettier-vscode" } }];
+    const result = mergeInheritedExtensions(currentExtensions, []);
     assert.deepStrictEqual(
-      mergeInheritedExtensions(currentExtensions, []),
+      result.merged,
       currentExtensions,
     );
   });
