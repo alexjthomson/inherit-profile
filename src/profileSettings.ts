@@ -48,6 +48,7 @@ export const NON_FLATTENABLE_SETTINGS: ReadonlySet<string> = new Set([
   "terminal.integrated.profiles.osx",
   "terminal.integrated.profiles.windows",
   "workbench.editor.customLabels.patterns",
+  "extensions.experimental.affinity"
 ]);
 
 /**
